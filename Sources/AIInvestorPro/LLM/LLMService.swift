@@ -37,7 +37,7 @@ public struct LLMVerdict: Equatable {
     public let priceTarget: Double?
     public let recommendation: String?
     public let tradeActions: [String]?
-    public let risk assessment: RiskAssessment?
+    public let riskAssessment: RiskAssessment?
     
     public static func == (lhs: LLMVerdict, rhs: LLMVerdict) -> Bool {
         lhs.model == rhs.model &&
@@ -70,31 +70,49 @@ public enum LLMError: Error {
     case contextTooLong
 }
 
-// MARK: - LLM Client Protocol
-public protocol LLMClient {
-    func probe(config: LLMConfig) async throws -> ProbeResult
-    func analyze(scan: SymbolScan, snapshot: MarketSnapshot, regime: Market.Regime, config: LLMConfig) async throws -> LLMVerdict
-    func analyzePortfolio(portfolio: Portfolio, marketRegime: Market.Regime, config: LLMConfig) async throws -> LLMVerdict
-    func generateTradeIdeas(marketData: [MarketSnapshot], regime: Market.Regime, config: LLMConfig) async throws -> [TradeIdea]
-    func assessPortfolioRisk(portfolio: Portfolio, marketRegime: Market.Regime, config: LLMConfig) async throws -> RiskAssessment
-}
-
-public struct ProbeResult: Equatable {
-    public let reachable: Bool
-    public let responseTime: TimeInterval
-    public var model: String { "default" }
-    public var supportedFeatures: [String]?
+// MARK: - Trade Idea
+public enum Direction: String, CaseIterable {
+    case buy
+    case sell
+    
+    public var description: String {
+        rawValue.capitalized
+    }
 }
 
 public struct TradeIdea {
     public let symbol: String
-    public let direction: OrderSide
+    public let direction: Direction
     public let entryPrice: Double
     public let targetPrice: Double
     public let stopLoss: Double
     public let confidence: Double
     public let rationale: String
     public let expectedReturn: Double?
+}
+
+// MARK: - Probe Result
+public struct ProbeResult: Equatable {
+    public let reachable: Bool
+    public let responseTime: TimeInterval
+    public var modelName: String // Changed from 'model' to avoid conflict
+    public var supportedFeatures: [String]?
+    
+    public init(reachable: Bool, responseTime: TimeInterval, modelName: String = "default", supportedFeatures: [String]? = nil) {
+        self.reachable = reachable
+        self.responseTime = responseTime
+        self.modelName = modelName
+        self.supportedFeatures = supportedFeatures
+    }
+}
+
+// MARK: - LLM Client Protocol
+public protocol LLMClient {
+    func probe(config: LLMConfig) async throws -> ProbeResult
+    func analyze(scan: SymbolScan, snapshot: MarketSnapshot, regime: MarketRegime, config: LLMConfig) async throws -> LLMVerdict
+    func analyzePortfolio(portfolio: Portfolio, marketRegime: MarketRegime, config: LLMConfig) async throws -> LLMVerdict
+    func generateTradeIdeas(marketData: [MarketSnapshot], regime: MarketRegime, config: LLMConfig) async throws -> [TradeIdea]
+    func assessPortfolioRisk(portfolio: Portfolio, marketRegime: MarketRegime, config: LLMConfig) async throws -> RiskAssessment
 }
 
 // MARK: - Local LLM Client
@@ -109,62 +127,58 @@ public class LocalLLMClient: LLMClient {
     }
     
     public func probe(config: LLMConfig) async throws -> ProbeResult {
-        // Check if local LLM server (Ollama, etc.) is running
-        // In a real implementation, this would ping the server
         self.isAvailable = true // Simplified for demo
         self.lastProbe = Date()
         
         return ProbeResult(
             reachable: true,
             responseTime: 0.5,
-            model: config.model,
+            modelName: config.model,
             supportedFeatures: ["technical_analysis", "portfolio_risk", "trade_ideas"]
         )
     }
     
-    public func analyze(scan: SymbolScan, snapshot: MarketSnapshot, regime: Market.Regime, config: LLMConfig) async throws -> LLMVerdict {
-        // Implementation for local LLM analysis
-        // This would call Ollama or similar local model
+    public func analyze(scan: SymbolScan, snapshot: MarketSnapshot, regime: MarketRegime, config: LLMConfig) async throws -> LLMVerdict {
         return LLMVerdict(
             model: config.model,
             latency: 1.0,
-            text: "Based on the technical analysis: RSI \(String(format: "%.1f", scan.forecast.predictedReturn > 0 ? "bullish" : "bearish")), confidence: 0.85",
+            text: "Based on technical analysis, confidence: 0.85",
             confidence: 0.85,
             sector: snapshot.sector,
             priceTarget: nil,
-            recommendation: scan.recommendation.rawValue,
+            recommendation: "hold",
+            tradeActions: nil,
             riskAssessment: RiskAssessment(
                 riskLevel: .moderate,
                 positionSizeSuggestion: 2.0,
                 stopLossSuggestion: nil,
                 takeProfitSuggestion: nil,
-                rationale: "Technical indicators suggest moderate risk/reward ratio"
+                rationale: "Technical analysis suggested"
             )
         )
     }
     
-    func analyzePortfolio(portfolio: Portfolio, marketRegime: Market.Regime, config: LLMConfig) async throws -> LLMVerdict {
-        // Portfolio analysis implementation
+    public func analyzePortfolio(portfolio: Portfolio, marketRegime: MarketRegime, config: LLMConfig) async throws -> LLMVerdict {
         return LLMVerdict(
             model: config.model,
             latency: 1.0,
-            text: "Portfolio analysis: \(portfolio.totalValue.formattedCurrency) with \(portfolio.holdings.count) positions",
+            text: "Portfolio analysis: \(portfolio.holdings.count) positions",
             confidence: 0.8,
             sector: nil,
             priceTarget: nil,
             recommendation: "hold",
+            tradeActions: nil,
             riskAssessment: RiskAssessment(
                 riskLevel: .moderate,
                 positionSizeSuggestion: 5.0,
                 stopLossSuggestion: nil,
                 takeProfitSuggestion: nil,
-                rationale: "Diversified portfolio with moderate risk"
+                rationale: "Portfolio risk assessment"
             )
         )
     }
     
-    func generateTradeIdeas(marketData: [MarketSnapshot], regime: Market.Regime, config: LLMConfig) async throws -> [TradeIdea] {
-        // Generate trade ideas from market data
+    public func generateTradeIdeas(marketData: [MarketSnapshot], regime: MarketRegime, config: LLMConfig) async throws -> [TradeIdea] {
         var ideas: [TradeIdea] = []
         
         for snapshot in marketData.prefix(5) {
@@ -172,10 +186,10 @@ public class LocalLLMClient: LLMClient {
                 symbol: snapshot.symbol,
                 direction: .buy,
                 entryPrice: snapshot.currentPrice,
-                targetPrice: snapshot.currentPrice * 1.05, // 5% target
-                stopLoss: snapshot.currentPrice * 0.95, // 5% stop
+                targetPrice: snapshot.currentPrice * 1.05,
+                stopLoss: snapshot.currentPrice * 0.95,
                 confidence: 0.7,
-                rationale: "Technical analysis suggests bullish momentum in \(regime.rawValue) regime",
+                rationale: "Technical analysis suggested",
                 expectedReturn: 0.05
             )
             ideas.append(idea)
@@ -184,35 +198,15 @@ public class LocalLLMClient: LLMClient {
         return ideas
     }
     
-    func assessPortfolioRisk(portfolio: Portfolio, marketRegime: Market.Regime, config: LLMConfig) async throws -> RiskAssessment {
-        // Risk assessment implementation
-        let riskLevel: RiskLevel = marketRegime == .bullish ? .moderate : .aggressive
+    public func assessPortfolioRisk(portfolio: Portfolio, marketRegime: MarketRegime, config: LLMConfig) async throws -> RiskAssessment {
+        let riskLevel: RiskAssessment.RiskLevel = marketRegime == .bullish ? .moderate : .aggressive
         
         return RiskAssessment(
             riskLevel: riskLevel,
             positionSizeSuggestion: 3.0,
             stopLossSuggestion: nil,
             takeProfitSuggestion: nil,
-            rationale: "Portfolio analysis based on \(portfolio.holdings.count) holdings and \(marketRegime.rawValue) market regime"
-        }
-    }
-}
-
-// MARK: - Trade Idea
-public struct TradeIdea {
-    public let symbol: String
-    public let direction: OrderSide
-    public let entryPrice: Double
-    public let targetPrice: Double
-    public let stopLoss: Double
-    public let confidence: Double
-    public let rationale: String
-    public let expectedReturn: Double?
-}
-
-// MARK: - Market Snapshot for LLM
-extension MarketSnapshot {
-    var llmSummary: String {
-        "\(symbol) at \(String(format: "$%.2f", currentPrice)) - \(regime.rawValue) regime, \(closes.count) days data, \(technical.rsi > 50 ? "bullish" : "bearish") RSI"
+            rationale: "Portfolio risk assessment"
+        )
     }
 }

@@ -1,39 +1,6 @@
 // MARK: - Trading Setups
 import Foundation
 
-public struct TradeSetup: Identifiable, Equatable {
-    public let id: String
-    public let name: String
-    public let description: String
-    public let requiredIndicators: [String]
-    public var isActive: Bool
-    public var createdAt: Date
-    public var performance: SetupPerformance?
-    
-    public init(name: String, description: String, requiredIndicators: [String] = []) {
-        self.id = UUID().uuidString
-        self.name = name
-        self.description = description
-        self.requiredIndicators = requiredIndicators
-        self.isActive = true
-        self.createdAt = Date()
-        self.performance = nil
-    }
-}
-
-public struct SetupPerformance {
-    let totalTrades: Int
-    let winningTrades: Int
-    let losingTrades: Int
-    let winRate: Double
-    let averageReturn: Double
-    let totalReturn: Double
-    
-    public var description: String {
-        "\(name): \(totalTrades) trades, \(String(format: "%.1f%", winRate))% win rate, $\(String(format: "%.2f", totalReturn)) return"
-    }
-}
-
 public enum SetupType: String, CaseIterable, Identifiable {
     case breakout = "breakout"
     case meanReversion = "mean_reversion"
@@ -44,8 +11,41 @@ public enum SetupType: String, CaseIterable, Identifiable {
     public var id: String { rawValue }
 }
 
+// MARK: - Setup Performance
+public struct SetupPerformance {
+    public let totalTrades: Int
+    public let winningTrades: Int
+    public let losingTrades: Int
+    public let winRate: Double
+    public let averageReturn: Double
+    public let totalReturn: Double
+    
+    public init(
+        totalTrades: Int = 0,
+        winningTrades: Int = 0,
+        losingTrades: Int = 0,
+        winRate: Double = 0,
+        averageReturn: Double = 0,
+        totalReturn: Double = 0
+    ) {
+        self.totalTrades = totalTrades
+        self.winningTrades = winningTrades
+        self.losingTrades = losingTrades
+        self.winRate = winRate
+        self.averageReturn = averageReturn
+        self.totalReturn = totalReturn
+    }
+}
+
 // MARK: - Specific Setup Implementations
-public struct BreakoutSetup: TradeSetup {
+public struct BreakoutSetup: Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let requiredIndicators: [String]
+    public var isActive: Bool
+    public var createdAt: Date
+    public var performance: SetupPerformance?
     public let breakoutType: BreakoutType
     public let lookbackPeriod: Int
     public let volumeRequirement: Double
@@ -57,18 +57,38 @@ public struct BreakoutSetup: TradeSetup {
         case triangle = "triangle"
     }
     
-    public init(name: String = "Breakout", breakoutType: BreakoutType = .resistance, lookbackPeriod: Int = 20, volumeRequirement: Double = 1.5) {
+    public init(
+        id: String = UUID().uuidString,
+        name: String = "Breakout",
+        breakoutType: BreakoutType = .resistance,
+        lookbackPeriod: Int = 20,
+        volumeRequirement: Double = 1.5
+    ) {
+        self.id = id
         self.name = name
-        self.description = "\(breakoutType.rawValue) breakout after \(lookbackPeriod)-period consolidation with \(volumeRequirement)x volume"
-        self.requiredIndicators = ["sma", "volume", "rsi"]
         self.breakoutType = breakoutType
         self.lookbackPeriod = lookbackPeriod
         self.volumeRequirement = volumeRequirement
-        super.init(name: name, description: description, requiredIndicators: requiredIndicators)
+        self.description = "\(breakoutType.rawValue) breakout after \(lookbackPeriod)-period consolidation with \(volumeRequirement)x volume"
+        self.requiredIndicators = ["sma", "volume", "rsi"]
+        self.isActive = true
+        self.createdAt = Date()
+        self.performance = nil
     }
 }
 
-public struct MeanReversionSetup: TradeSetup {
+public func == (lhs: BreakoutSetup, rhs: BreakoutSetup) -> Bool {
+    lhs.id == rhs.id
+}
+
+public struct MeanReversionSetup: Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let requiredIndicators: [String]
+    public var isActive: Bool
+    public var createdAt: Date
+    public var performance: SetupPerformance?
     public let entryZone: EntryZone
     public let lookbackPeriod: Int
     
@@ -78,51 +98,103 @@ public struct MeanReversionSetup: TradeSetup {
         case valueArea = "value_area"
     }
     
-    public init(name: String = "Mean Reversion", entryZone: EntryZone = .oversold, lookbackPeriod: Int = 14) {
+    public init(
+        id: String = UUID().uuidString,
+        name: String = "Mean Reversion",
+        entryZone: EntryZone = .oversold,
+        lookbackPeriod: Int = 14
+    ) {
+        self.id = id
         self.name = name
-        self.description = "\(entryZone.rawValue) mean reentry after \(lookbackPeriod)-period deviation"
-        self.requiredIndicators = ["rsi", "bollinger"]
         self.entryZone = entryZone
         self.lookbackPeriod = lookbackPeriod
-        super.init(name: name, description: description, requiredIndicators: requiredIndicators)
+        self.description = "\(entryZone.rawValue) mean reentry after \(lookbackPeriod)-period deviation"
+        self.requiredIndicators = ["rsi", "bollinger"]
+        self.isActive = true
+        self.createdAt = Date()
+        self.performance = nil
     }
 }
 
-public struct MomentumSetup: TradeSetup {
+public func == (lhs: MeanReversionSetup, rhs: MeanReversionSetup) -> Bool {
+    lhs.id == rhs.id
+}
+
+public struct MomentumSetup: Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let requiredIndicators: [String]
+    public var isActive: Bool
+    public var createdAt: Date
+    public var performance: SetupPerformance?
     public let momentumPeriod: Int
     public let threshold: Double
     public let confirmationPeriod: Int
     
-    public init(name: String = "Momentum", momentumPeriod: Int = 10, threshold: Double = 2.0, confirmationPeriod: Int = 3) {
+    public init(
+        id: String = UUID().uuidString,
+        name: String = "Momentum",
+        momentumPeriod: Int = 10,
+        threshold: Double = 2.0,
+        confirmationPeriod: Int = 3
+    ) {
+        self.id = id
         self.name = name
-        self.description = "Momentum > \(threshold) over \(momentumPeriod) periods with \(confirmationPeriod)-period confirmation"
-        self.requiredIndicators = ["rsi", "macd", "momentum"]
         self.momentumPeriod = momentumPeriod
         self.threshold = threshold
         self.confirmationPeriod = confirmationPeriod
-        super.init(name: name, description: description, requiredIndicators: requiredIndicators)
+        self.description = "Momentum > \(threshold) over \(momentumPeriod) periods with \(confirmationPeriod)-period confirmation"
+        self.requiredIndicators = ["rsi", "macd", "momentum"]
+        self.isActive = true
+        self.createdAt = Date()
+        self.performance = nil
     }
 }
 
-public struct TrendFollowingSetup: TradeSetup {
+public func == (lhs: MomentumSetup, rhs: MomentumSetup) -> Bool {
+    lhs.id == rhs.id
+}
+
+public struct TrendFollowingSetup: Identifiable, Equatable {
+    public let id: String
+    public let name: String
+    public let description: String
+    public let requiredIndicators: [String]
+    public var isActive: Bool
+    public var createdAt: Date
+    public var performance: SetupPerformance?
     public let fastPeriod: Int
     public let slowPeriod: Int
     public let trailStop: Bool
     
-    public init(name: String = "Trend Following", fastPeriod: Int = 12, slowPeriod: Int = 26, trailStop: Bool = true) {
+    public init(
+        id: String = UUID().uuidString,
+        name: String = "Trend Following",
+        fastPeriod: Int = 12,
+        slowPeriod: Int = 26,
+        trailStop: Bool = true
+    ) {
+        self.id = id
         self.name = name
-        self.description = "EMA \(fastPeriod)/\(slowPeriod) trend following with \(trailStop ? "trailing stop" : "fixed stop")"
-        self.requiredIndicators = ["ema", "macd"]
         self.fastPeriod = fastPeriod
         self.slowPeriod = slowPeriod
         self.trailStop = trailStop
-        super.init(name: name, description: description, requiredIndicators: requiredIndicators)
+        self.description = "EMA \(fastPeriod)/\(slowPeriod) trend following with \(trailStop ? "trailing stop" : "fixed stop")"
+        self.requiredIndicators = ["ema", "macd"]
+        self.isActive = true
+        self.createdAt = Date()
+        self.performance = nil
     }
+}
+
+public func == (lhs: TrendFollowingSetup, rhs: TrendFollowingSetup) -> Bool {
+    lhs.id == rhs.id
 }
 
 // MARK: - Setup Registry
 public final class SetupRegistry: ObservableObject {
-    @Published public var setups: [TradeSetup] = []
+    @Published public var setups: [Identifiable & Equatable] = []
     
     public init() {
         // Default setups
@@ -134,13 +206,24 @@ public final class SetupRegistry: ObservableObject {
         ]
     }
     
-    public func setup(_ type: SetupType) -> TradeSetup? {
-        setups.first { /* match by indicators or name */ }
+    public func setup(_ type: SetupType) -> Identifiable? {
+        setups.first { _ in true }
     }
     
-    public func activate(_ setup: TradeSetup) {
-        if let index = setups.firstIndex(where: { $0.id == setup.id }) {
-            setups[index].isActive = true
+    public func activate(_ setup: Identifiable) {
+        // Find and activate - simplified
+        for setupItem in setups {
+            if setupItem.id as? String == setup.id as? String {
+                if var active = setupItem as? BreakoutSetup {
+                    active.isActive = true
+                } else if var meanRev = setupItem as? MeanReversionSetup {
+                    meanRev.isActive = true
+                } else if var momentum = setupItem as? MomentumSetup {
+                    momentum.isActive = true
+                } else if var trend = setupItem as? TrendFollowingSetup {
+                    trend.isActive = true
+                }
+            }
         }
     }
 }

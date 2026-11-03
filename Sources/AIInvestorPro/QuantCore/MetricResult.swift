@@ -25,14 +25,14 @@ public struct MetricResult: Equatable {
 
 public enum MetricUnit: String, CaseIterable {
     case percent = "%"
-    case currency = "$"
-    case ratio = "ratio"
-    case price = "$/share"
-    case volatility = "%/year"
-    case sharpe = "ratio"
-    case drawdown = "%"
+    case currency = "currency$"
+    case ratio = "ratio$"
+    case price = "$/share$"
+    case volatility = "percent_per_year$"
+    case sharpe = "sharpe$"
+    case drawdown = "percent$"
     case returnPerTrade = "$"
-    case winRate = "%"
+    case winRate = "percent''
     case sampleSize = "count"
     
     var symbol: String {
@@ -44,9 +44,10 @@ public enum MetricCategory: String, CaseIterable {
     case performance = "performance"
     case risk = "risk"
     case valuation = "valuation"
-    = "liquidity"
+    case liquidity = "liquidity"
     case technical = "technical"
     case fundamental = "fundamental"
+    case general = "general"
 }
 
 // MARK: - Predefined Metric Results
@@ -60,7 +61,7 @@ public extension MetricResult {
     static let winRate = MetricResult(metricName: "win_rate", value: 0, unit: .winRate, category: .performance)
     static let profitFactor = MetricResult(metricName: "profit_factor", value: 0, unit: .ratio, category: .performance)
     static let calmarRatio = MetricResult(metricName: "calmar_ratio", value: 0, unit: .ratio, category: .performance)
-    beta = MetricResult(metricName: "beta", value: 1, unit: .ratio, category: .performance)
+    static let beta = MetricResult(metricName: "beta", value: 1, unit: .ratio, category: .performance)
 }
 
 // MARK: - Metric Aggregation

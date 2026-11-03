@@ -3,7 +3,7 @@ import Foundation
 
 public struct TechnicalIndicators {
     /// Calculate all major technical indicators from closing prices
-    public static func calculate(from prices: [Double]) -> TechnicalIndicators {
+    public static func calculate(from prices: [Double], high: [Double]? = nil, low: [Double]? = nil, volume: [Double]? = nil) -> TechnicalIndicators {
         guard prices.count >= 26 else {
             return TechnicalIndicators()
         }
@@ -32,7 +32,7 @@ public struct TechnicalIndicators {
         let williamsR = WilliamsR(prices: prices, period: 14)
         
         // Average True Range (14-period)
-        let atr = AverageTrueRange(high: prices, low: prices, close: prices, period: 14)
+        let atr = AverageTrueRange(high: high ?? prices, low: low ?? prices, close: prices, period: 14)
         
         // Momentum
         let momentum = Momentum(prices: prices, period: 10)
@@ -49,10 +49,11 @@ public struct TechnicalIndicators {
             bollingerUpper: bollinger.upper,
             bollingerLower: bollinger.lower,
             bollingerMiddle: bollinger.middle,
-            stochastic: stochastic,
-            williamsR: williamsR,
-            atr: atr,
-            momentum: momentum
+            stochasticK: stochastic.k,
+            stochasticD: stochastic.d,
+            williamsR: williamsR.value,
+            atr: atr.value,
+            momentum: momentum.value
         )
     }
     
@@ -61,11 +62,11 @@ public struct TechnicalIndicators {
         guard prices.count > period else { return 50.0 }
         let changes = zip(prices.dropFirst(), prices.dropLast()).map { $1 - $0 }
         let gains = changes.filter { $0 > 0 }
-        let losses = changes.filter { $0 < 0 }.map { abs($0) }
+        let losses = abs(changes.filter { $0 < 0 })
         let avgGain = gains.isEmpty ? 0 : gains.reduce(0, +) / Double(gains.count)
-        let avgLoss = losses.isEmpty ? 0 : losses.reduce(0, +) / Double(losses.count)
-        let rs = avgLoss == 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
-        return rs
+        let avgLoss = losses.isEmpty ? 1 : losses.reduce(0, +) / Double(losses.count)
+        let rs = avgLoss == 0 ? 100 : avgGain / avgLoss
+        return 100 - (100 / (1 + rs))
     }
     
     // EMA (Exponential Moving Average)
@@ -104,8 +105,8 @@ private struct BollingerBands {
         
         let subset = Array(prices[prices.count-period...])
         let middle = subset.reduce(0, +) / Double(subset.count)
-        let squaredDev = subset.map { pow($0 - middle, 2) }.reduce(0, +) / Double(subset.count - 1)
-        let stdDevValue = sqrt(stdDevValue)
+        let squaredDev = subset.map { pow($0 - middle, 2) }.reduce(0, +) / Double(max(subset.count - 1, 1))
+        let stdDevValue = sqrt(squaredDev)
         
         self.upper = middle + (stdDevValue * stdDev)
         self.lower = middle - (stdDevValue * stdDev)
@@ -131,9 +132,8 @@ private struct StochasticOscillator {
         
         let currentClose = prices.last!
         self.k = (currentClose - lowLow) / (highHigh - lowLow) * 100
-        // %D is a 3-period SMA of %K
-        let kValues = self.k // In a full implementation, we'd track %K over periods
-        self.d = k // Simplified - would average %K over 3 periods
+        // %D is a 3-period SMA of %K - simplified to just return k
+        self.d = k
     }
 }
 
@@ -161,14 +161,14 @@ private struct AverageTrueRange {
     let value: Double
     
     init(high: [Double], low: [Double], close: [Double], period: Int) {
-        guard prices.count >= period + 1 else {
+        guard close.count >= period + 1 else {
             self.value = 0.0
             return
         }
         
-        // True Range = max(high - low, abs(high - previousClose), abs(low - previousClose))
+        // True Range = max(high - low, abs(high - previousClose), abs(low - previousClose)
         var trueRanges: [Double] = []
-        for i in 1..<prices.count {
+        for i in 1..<close.count {
             let tr = max(
                 high[i] - low[i],
                 abs(high[i] - close[i-1]),
@@ -178,9 +178,11 @@ private struct AverageTrueRange {
         }
         
         // Average True Range = mean of true ranges over period
-        let start = trueRates.count - period + 1
-        let subset = Array(trueRates[start...])
-        self.value = subset.reduce(0, +) / Double(subset.count)
+        let start = trueRanges.count - period + 1
+        let endIndex = max(start, 0)
+        let count = max(trueRanges.count - endIndex, 1)
+        let subset = Array(trueRanges[endIndex...])
+        self.value = subset.reduce(0, +) / Double(count)
     }
 }
 
@@ -197,5 +199,3 @@ private struct Momentum {
         self.value = change
     }
 }
-```
-

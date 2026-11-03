@@ -24,14 +24,14 @@ public enum AlertType: String, CaseIterable {
     case crossBelow = "cross below"
 }
 
-public struct AlertStore: ObservableObject {
+public class AlertStore: ObservableObject {
     @Published public var alerts: [Alert] = []
     @Published public var triggeredCount: Int = 0
     
     public init() {}
     
     /// Add a new price alert
-    mutating func add(symbol: String, alertType: AlertType, targetPrice: Double) {
+    func add(symbol: String, alertType: AlertType, targetPrice: Double) {
         // Check if alert already exists
         if !alerts.contains(where: { $0.symbol == symbol && $0.alertType == alertType && $0.targetPrice == targetPrice }) {
             alerts.append(Alert(symbol: symbol, alertType: alertType, targetPrice: targetPrice))
@@ -39,7 +39,7 @@ public struct AlertStore: ObservableObject {
     }
     
     /// Check and trigger alerts against current market data
-    mutating func checkAlerts(for snapshots: [MarketSnapshot]) {
+    func checkAlerts(for snapshots: [MarketSnapshot]) {
         triggeredCount = 0
         
         for snapshot in snapshots where snapshots.count > 0 {
@@ -55,14 +55,21 @@ public struct AlertStore: ObservableObject {
                 case .below:
                     triggered = currentPrice <= alert.targetPrice
                 case .crossAbove:
-                    // Would need previous price - simplified
+                    // For cross detection, would need previous price
                     triggered = currentPrice >= alert.targetPrice
                 case .crossBelow:
-                    // Would need previous price - simplified
+                    // For cross detection, would need previous price
                     triggered = currentPrice <= alert.targetPrice
                 }
                 
                 if triggered && !alert.isTriggered {
+                    // Update the alert with triggered price
+                    // Since Alert is a struct with let properties, we need to create a new one
+                    alerts[index] = Alert(
+                        symbol: alert.symbol,
+                        alertType: alert.alertType,
+                        targetPrice: alert.targetPrice
+                    )
                     alerts[index].triggeredPrice = currentPrice
                     alerts[index].triggeredAt = Date()
                     triggeredCount += 1
@@ -71,16 +78,9 @@ public struct AlertStore: ObservableObject {
         }
     }
     
-    /// Remove triggered alerts
-    mutating func clearTriggered() {
+    /// Clear triggered alerts
+    func clearTriggered() {
         alerts.removeAll { $0.isTriggered }
         triggeredCount = 0
-    }
-}
-
-// MARK: - Alert Extensions
-extension Alert {
-    var description: String {
-        "\(symbol) \(alertType.rawValue) \(String(format: "$%.2f", targetPrice))"
     }
 }

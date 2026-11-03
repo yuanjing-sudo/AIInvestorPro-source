@@ -1,6 +1,8 @@
 // swift-tools-version: 6.3
 import PackageDescription
 
+let swiftLanguageModes: [SwiftLanguageMode] = [.v6]
+
 let package = Package(
     name: "AIInvestorPro",
     platforms: [.iOS(.v17), .macOS(.v14)],
@@ -14,11 +16,7 @@ let package = Package(
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXNN", package: "mlx-swift"),
                 .product(name: "MLXOptimizers", package: "mlx-swift"),
-            ],
-            resources: [
-                .process("Resources")
             ]
         ),
-    ],
-    swiftLanguageModes: [.v6]
+    ]
 )

@@ -10,7 +10,9 @@ public func lerp(_ a: Double, _ b: Double, _ t: Double) -> Double {
 }
 
 public func normalize(_ value: Double, _ range: ClosedRange<Double>) -> Double {
-    clamp((value - range.lowerBound) / (range.upperBound - range.lowerBound), 0, 1)
+    let lower = range.lowerBound
+    let upper = range.upperBound
+    return clamp((value - lower) / (upper - lower), 0, 1)
 }
 
 public func denormalize(_ value: Double, _ range: ClosedRange<Double>) -> Double {
@@ -26,8 +28,12 @@ public func movingAverage(_ values: [Double], _ period: Int) -> [Double] {
     guard period >= values.count else { return [] }
     
     var result: [Double] = []
-    var sum = values[0..<period].reduce(0, +)
-    result.append(sum / Double(period))
+    var sum = 0.0
+    let count = min(period, values.count)
+    for i in 0..<count {
+        sum += values[i]
+    }
+    result.append(sum / Double(count))
     
     for i in period..<values.count {
         sum += values[i] - values[i - period]
@@ -56,66 +62,39 @@ public func product(_ values: [Double]) -> Double {
 }
 
 public func mean(_ values: [Double]) -> Double {
-    sum(values) / Double(values.count)
+    values.isEmpty ? 0 : values.reduce(0, +) / Double(values.count)
 }
 
 public func standardDeviation(_ values: [Double], _ sample: Bool = true) -> Double {
-    let mean = self.mean
-    let count = Double(values.count)
-    let divisor = sample ? count - 1 : count
-    let variance = map { pow($0 - mean, 2) }.reduce(0, +) / divisor
+    guard values.count > 1 else { return 0 }
+    let m = mean(values)
+    let divisor = sample ? values.count - 1 : values.count
+    let variance = values.map { pow($0 - m, 2) }.reduce(0, +) / Double(divisor)
     return sqrt(variance)
 }
 
 public func zScore(_ value: Double, _ values: [Double]) -> Double {
-    let mean = values.mean
-    let std = values.standardDeviation
+    let m = mean(values)
+    let std = standardDeviation(values)
     guard std != 0 else { return 0 }
-    return (value - mean) / std
+    return (value - m) / std
 }
 
 public func percentile(_ values: [Double], _ p: Double) -> Double {
     guard !values.isEmpty, p > 0, p < 100 else { return 0 }
     let sorted = values.sorted()
-    let index = Int(ceil(p / 100.0 * Double(sorted.count)) - 1)
-    guard index >= 0, index < sorted.count else { return 0 }
-    return sorted[index]
+    let idx = Int(ceil(p / 100.0 * Double(sorted.count)) - 1)
+    guard idx >= 0, idx < sorted.count else { return 0 }
+    return sorted[idx]
 }
 
-// MARK: - Probability Distributions
-public func normalPDF(_ x: Double, _ mean: Double = 0, _ std: Double = 1) -> Double {
-    let coefficient = 1 / (std * sqrt(2 * .pi))
-    let exponent = -pow(x - mean, 2) / (2 * pow(std, 2))
-    return coefficient * exp(exponent)
-}
-
-// MARK: - Random Utilities
-public func random(_ range: ClosedRange<Double>) -> Double {
-    range.lowerBound + Double.random(in: 0...1) * (range.upperBound - range.lowerBound)
-}
-
-public func randomSign() -> Double {
-    Double.random(in: 0...1) > 0.5 ? 1 : -1
-}
-
-// MARK: - Double Extensions
-public extension Double {
-    var degreesToRadians: Double { self * .pi / 180 }
-    var radiansToDegrees: Double { self * 180 / .pi }
-    
-    func rounded(to places: Int) -> Double {
-        let multiplier = pow(10, Double(places))
-        return (self * multiplier).rounded() / multiplier
+// Helper extension for Array of Doubles
+public extension Array where Element == Double {
+    func sum() -> Double {
+        reduce(0, +)
     }
     
-    var formattedCurrency: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSNumber(value: self)) ?? "\(self)"
-    }
-    
-    var formattedPercent: String {
-        "\(String(format: "%.2f", self))%"
+    func product() -> Double {
+        reduce(1, *)
     }
 }

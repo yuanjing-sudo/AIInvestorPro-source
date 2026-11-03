@@ -111,6 +111,49 @@ public struct ValueAlpha: AlphaFactor {
     }
 }
 
+public struct MomentumAccelerationAlpha: AlphaFactor {
+    public let fastPeriod: Int
+    public let slowPeriod: Int
+    
+    public init(fastPeriod: Int = 5, slowPeriod: Int = 20) {
+        self.fastPeriod = fastPeriod
+        self.slowPeriod = slowPeriod
+        super.init(name: "MomentumAcceleration", description: "Acceleration of momentum over fast/slow periods", score: 0, lookbackPeriod: slowPeriod)
+    }
+    
+    public mutating func calculate(from prices: [Double]) {
+        guard prices.count >= slowPeriod else { return }
+        let fastChange = (prices.last! - prices[prices.count - fastPeriod]) / abs(prices[prices.count - fastPeriod])
+        let slowChange = (prices.last! - prices[prices.count - slowPeriod]) / abs(prices[prices.count - slowPeriod])
+        // Acceleration = difference in momentum
+        score = (fastChange - slowChange) * 100
+    }
+}
+
+public struct ReversalAlpha: AlphaFactor {
+    public let lookbackPeriod: Int
+    
+    public init(lookbackPeriod: Int = 10) {
+        self.lookbackPeriod = lookbackPeriod
+        super.init(name: "Reversal", description: "Price reversal detection", score: 0, lookbackPeriod: lookbackPeriod)
+    }
+    
+    public mutating func calculate(from prices: [Double]) {
+        guard prices.count >= lookbackPeriod + 2 else { return }
+        // Look for reversal: price change direction opposite to recent trend
+        let midPoint = prices.count / 2
+        let earlyChange = (prices[midPoint] - prices[0]) / abs(prices[0])
+        let lateChange = (prices.last! - prices[midPoint]) / abs(prices[midPoint])
+        
+        // If early was up and late is down (or vice versa), it's a reversal
+        if (earlyChange > 0 && lateChange < 0) || (earlyChange < 0 && lateChange > 0) {
+            score = lateChange * 100 // Score based on reversal magnitude
+        } else {
+            score = 0 // No reversal
+        }
+    }
+}
+
 // MARK: - Alpha Factor Composite
 public struct AlphaComposite {
     private var factors: [AlphaFactor] = []
@@ -142,5 +185,29 @@ public struct AlphaComposite {
     
     public var recommendation: String {
         compositeScore > 0.5 ? "buy" : compositeScore < -0.5 ? "sell" : "hold"
+    }
+}
+
+// MARK: - Alpha Factor Registry
+public final class AlphaFactorRegistry: ObservableObject {
+    @Published public var factors: [AlphaFactor] = []
+    @Published public var composite: AlphaComposite?
+    
+    public init() {
+        // Default factors
+        factors = [
+            MomentumAlpha(),
+            MeanReversionAlpha(),
+            VolatilityAlpha(),
+            ValueAlpha()
+        ]
+    }
+    
+    public func recalculateComposite() {
+        var composite = AlphaComposite()
+        for factor in factors {
+            composite.add(factor)
+        }
+        self.composite = composite
     }
 }
