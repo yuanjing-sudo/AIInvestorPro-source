@@ -37,11 +37,6 @@ public struct RiskLimits {
     }
 }
 
-// MARK: - Trade Side
-public enum OrderSide: String, CaseIterable {
-    case buy
-    case sell
-}
 
 // MARK: - Order
 public struct Order {

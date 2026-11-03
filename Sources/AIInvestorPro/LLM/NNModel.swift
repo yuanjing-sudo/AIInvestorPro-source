@@ -94,7 +94,6 @@ public final class ModelRegistry: ObservableObject {
 
 // Helper extension for string manipulation
 public extension String {
-    func replacingUnderscoresWithSpaces() -> String {
         self.replacingOccurrences(of: "_", with: " ")
     }
 }

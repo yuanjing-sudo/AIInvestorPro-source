@@ -9,8 +9,12 @@ public enum Sentiment: String, CaseIterable {
     case negative = "negative"
     case veryNegative = "very_negative"
     
+    /// Removes underscores from string representation 
+    public func replacingUnderscoresWithSpaces() -> String { 
+        self.replacingOccurrences(of: "_", with: " ") 
+    }
+    
     public var description: String {
-        rawValue.replacingUnderscoresWithSpaces()
     }
     
     var color: String {

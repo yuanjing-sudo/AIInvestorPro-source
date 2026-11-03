@@ -9,7 +9,7 @@ public struct MetricResult: Equatable {
     public var benchmark: Double?
     public var category: MetricCategory
     
-    public init(metricName: String, value: Double, unit: MetricUnit, category: MetricCategory = .general, benchmark: Double? = nil) {
+    public init(metricName: String, value: Double, unit: MetricUnit, category: MetricCategory = .performance, benchmark: Double? = nil) {
         self.metricName = metricName
         self.value = value
         self.unit = unit
@@ -24,16 +24,16 @@ public struct MetricResult: Equatable {
 }
 
 public enum MetricUnit: String, CaseIterable {
-    case percent = "%"
-    case currency = "currency$"
-    case ratio = "ratio$"
-    case price = "$/share$"
-    case volatility = "percent_per_year$"
-    case sharpe = "sharpe$"
-    case drawdown = "percent$"
-    case returnPerTrade = "$"
-    case winRate = "percent''
-    case sampleSize = "count"
+    case percent = "percent_unit"
+    case currency = "currency_unit"
+    case ratio = "ratio_unit"
+    case price = "price_unit"
+    case volatility = "volatility_unit"
+    case sharpe = "sharpe_unit"
+    case drawdown = "drawdown_unit"
+    case returnPerTrade = "return_unit"
+    case winRate = "winrate_unit"
+    case sampleSize = "sample_unit"
     
     var symbol: String {
         rawValue
@@ -47,51 +47,4 @@ public enum MetricCategory: String, CaseIterable {
     case liquidity = "liquidity"
     case technical = "technical"
     case fundamental = "fundamental"
-    case general = "general"
-}
-
-// MARK: - Predefined Metric Results
-public extension MetricResult {
-    static let totalReturn = MetricResult(metricName: "total_return", value: 0, unit: .percent, category: .performance)
-    static let annualReturn = MetricResult(metricName: "annual_return", value: 0, unit: .percent, category: .performance)
-    static let sharpeRatio = MetricResult(metricName: "sharpe_ratio", value: 0, unit: .sharpe, category: .performance)
-    static let sortinoRatio = MetricResult(metricName: "sortino_ratio", value: 0, unit: .sharpe, category: .performance)
-    static let maxDrawdown = MetricResult(metricName: "max_drawdown", value: 0, unit: .drawdown, category: .risk)
-    static let volatility = MetricResult(metricName: "volatility", value: 0, unit: .volatility, category: .risk)
-    static let winRate = MetricResult(metricName: "win_rate", value: 0, unit: .winRate, category: .performance)
-    static let profitFactor = MetricResult(metricName: "profit_factor", value: 0, unit: .ratio, category: .performance)
-    static let calmarRatio = MetricResult(metricName: "calmar_ratio", value: 0, unit: .ratio, category: .performance)
-    static let beta = MetricResult(metricName: "beta", value: 1, unit: .ratio, category: .performance)
-}
-
-// MARK: - Metric Aggregation
-public struct MetricAggregator {
-    private var results: [MetricResult] = []
-    
-    public mutating func add(_ result: MetricResult) {
-        results.append(result)
-    }
-    
-    public func average(for metric: String) -> Double? {
-        results.filter { $0.metricName == metric }
-            .map { $0.value }
-            .average
-    }
-    
-    public func summary() -> String {
-        let perfMetrics = results.filter { $0.category == .performance }
-        return "Performance: \(perfMetrics.map { "\($0.metricName): \(String(format: "%.2f", $0.value))\($0.unit.symbol)" }.joined(separator: ", "))"
-    }
-    
-    public func bestMetric(in category: MetricCategory) -> MetricResult? {
-        results.filter { $0.category == category }
-            .max(by: { $0.value < $1.value })
-    }
-}
-
-// MARK: - Helper Extension
-private extension Array where Element == Double {
-    var average: Double {
-        isEmpty ? 0 : reduce(0, +) / count
-    }
 }

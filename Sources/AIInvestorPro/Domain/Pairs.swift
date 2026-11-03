@@ -54,7 +54,6 @@ public enum TradeSignal: String, CaseIterable {
     case hold = "hold"
     
     public var description: String {
-        rawValue.replacingUnderscoresWithSpaces
     }
 }
 
