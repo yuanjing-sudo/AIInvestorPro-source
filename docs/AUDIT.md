@@ -11,7 +11,7 @@ At audit time the legacy app target **did not compile**. The problems were not i
 missing imports, undeclared types and members, duplicate declarations, invalid Swift
 syntax, and immutable-value mutation were spread across every layer (app, domain,
 analysis, LLM, risk, trading, services). The `feature/investor-kit` branch contains a
-static repair of those findings; compiler verification is still pending (see
+repair of those findings, now compiler-verified by green Swift CI on macOS and Linux (see
 “Remediation status” below).
 
 The new `InvestorKit` target deliberately does not depend on any of this code. It is a
@@ -24,10 +24,12 @@ is unsafe; **P2** = architecture, testing, performance, or product quality.
 ## Remediation status (`feature/investor-kit`)
 
 The findings below are preserved as the original audit. The `feature/investor-kit` branch
-now contains a static repair pass, a dependency-free `InvestorKit` library, and a
-cross-platform PWA. No Swift toolchain was available in the repair environment, so the
-repair is **statically reviewed but not compiler-verified**; the new `Swift` workflow runs
-`swift build`/`swift test` on macOS and Linux.
+now contains a repair pass, a dependency-free `InvestorKit` library, and a cross-platform
+PWA. The repair was written without a local Swift toolchain, then compiler-verified by the
+`Swift` workflow (run
+[`42169033915`](https://github.com/yuanjing-sudo/AIInvestorPro-source/actions/runs/42169033915)):
+`swift build` and `swift test` pass for `InvestorKit` on Linux with Swift 5.10, and the
+legacy target builds and runs the `InvestorKitTests` filter on `macos-15`.
 
 | Original finding | Status after repair |
 | --- | --- |
@@ -44,10 +46,10 @@ repair is **statically reviewed but not compiler-verified**; the new `Swift` wor
 | Alerts compilation/crossing/re-firing (P1) | Trigger fields are assignable; `crossAbove`/`crossBelow` compare against the previous observed price; fired alerts stay fired until cleared. |
 | Screener duplicates/units/edges (P1) | Best-per-symbol dedupe, percent-consistent momentum, guards for short histories, and `horizon` is a lookback only. |
 | Concurrency/state (P1) | `MarketPipeline` and `ExecutionManager` are `@MainActor`; progress has a single source; execution is deterministic paper-fill. |
-| CI/tests (P2) | 41 XCTest cases, 82 web unit tests, a JSDOM UI smoke test, Swift CI, Pages CI. |
+| CI/tests (P2) | 41 XCTest cases, 82 web unit tests, a JSDOM UI smoke test, and green Swift CI on Linux + macOS. |
 
-**Still open / deliberately deferred:** compiler verification of the legacy target,
-next-bar execution inside the legacy `BacktestEngine` API, a true actor or lock around
+**Still open / deliberately deferred:** next-bar execution inside the legacy
+`BacktestEngine` API, a true actor or lock around
 `YahooService` rate limiting, `@MainActor` isolation for every LLM registry, stable
 `Holding.id` values across reconstruction, real market-data adapters, and the P2
 architecture/security/UX items listed later in this document.
@@ -414,15 +416,15 @@ The new library is not just a refactor; it is a reference implementation for the
 ## Reproduce / verify
 
 ```bash
-# Library only (works today; the legacy target is excluded)
+# Library only (no SwiftUI/Apple frameworks required)
 INVESTORKIT_ONLY=1 swift build
 INVESTORKIT_ONLY=1 swift test
 INVESTORKIT_ONLY=1 swift run InvestorKitDemo
 
-# Full package once the app target is repaired
+# Full package, including the repaired SwiftUI app target (macOS)
 swift build
-swift test
+swift test --filter InvestorKitTests
 ```
 
-If you build the full package before the P0 items are fixed, expect a long list of
-errors starting with missing `Combine` imports and duplicate `TradeSignal` declarations.
+The full package requires a macOS toolchain for SwiftUI. The `Swift` GitHub Actions
+workflow runs both variants on every push and pull request.

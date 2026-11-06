@@ -9,8 +9,8 @@ local portfolio persistence.
 > The original `AIInvestorPro` SwiftUI target has been repaired against every finding in
 > [`docs/AUDIT.md`](docs/AUDIT.md): imports, duplicate types, immutable-value mutation,
 > indicator math, portfolio cost basis, backtest P&L, deterministic market data and
-> `@MainActor` UI updates. The repair was performed without a local Swift toolchain, so
-> `swift build` still needs verification on macOS/Linux; see the `Swift` workflow.
+> `@MainActor` UI updates. The repair is now compiler-verified: the `Swift` workflow builds
+> the legacy target on macOS and passes all 41 `InvestorKit` tests on Linux and macOS.
 >
 > Two independent deliverables now live in the repository:
 >
@@ -60,11 +60,10 @@ tax-lot accounting, alerts, and a screener against synthetic data. It writes
 
 Without the environment variable, the manifest also includes the legacy
 `AIInvestorPro` SwiftUI executable target. That target requires macOS or an Apple
-platform toolchain; CI builds it on `macos-14`.
+platform toolchain; CI builds it on `macos-15`.
 
-> The repair was written without a local Swift toolchain (Termux/Android). Run the
-> commands above on macOS or Linux with Swift 5.9+ before merging. The audit distinguishes
-> static findings from verified build results.
+> CI is green: `InvestorKit` builds and passes 41 tests on Linux (Swift 5.10), and the
+> legacy target builds and passes the `InvestorKitTests` filter on macOS.
 
 ## Cross-platform web app (Android included)
 
@@ -85,8 +84,8 @@ Android home screen (Chrome/Edge/Samsung Internet), an iPhone/iPad home screen (
 Share → Add to Home Screen), or a desktop. Portfolio, alerts and theme are stored locally.
 
 GitHub Pages deployment is automated by
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml). Expected URL after enabling
-Pages with **GitHub Actions** as the source:
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml), using **GitHub Actions** as
+the Pages source:
 
 ```text
 https://yuanjing-sudo.github.io/AIInvestorPro-source/
@@ -130,8 +129,8 @@ if let report = result?.report {
 
 ## Roadmap
 
-1. **Verify the app target** with `swift build` on macOS and fix any remaining
-   compiler diagnostics surfaced by CI.
+1. ~~**Verify the app target** with `swift build` on macOS and fix any remaining
+   compiler diagnostics surfaced by CI.~~ Done: Swift CI is green on Linux and macOS.
 2. **Wire InvestorKit into SwiftUI** behind observable, `@MainActor` view models.
 3. **Expand CI** with a macOS SwiftUI build, SwiftLint or swift-format, and web tests.
 4. **Replace heuristics** with production-grade components:
