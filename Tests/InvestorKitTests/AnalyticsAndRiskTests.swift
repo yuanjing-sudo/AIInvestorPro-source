@@ -28,7 +28,7 @@ final class PerformanceAnalyticsTests: XCTestCase {
     }
 
     func testValuesAtRiskAreNonNegative() {
-        let equity = [100, 99, 101, 98, 102, 97, 103]
+        let equity = [100.0, 99.0, 101.0, 98.0, 102.0, 97.0, 103.0]
         let report = PerformanceAnalytics.analyze(equity: equity)!
         XCTAssertGreaterThanOrEqual(report.valueAtRisk95, 0)
         XCTAssertGreaterThanOrEqual(report.conditionalValueAtRisk95, report.valueAtRisk95)
