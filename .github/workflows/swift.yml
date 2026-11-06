@@ -12,7 +12,7 @@ permissions:
 jobs:
   investor-kit:
     name: InvestorKit (Linux)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       INVESTORKIT_ONLY: '1'
     steps:
@@ -26,7 +26,7 @@ jobs:
 
   legacy-app:
     name: Legacy app target (macOS)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
