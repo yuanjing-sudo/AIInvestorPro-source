@@ -2,19 +2,17 @@
 import Foundation
 import Combine
 
-public enum Sentiment: String, CaseIterable {
+public enum Sentiment: String, CaseIterable, Identifiable, Sendable {
     case veryPositive = "very_positive"
     case positive = "positive"
     case neutral = "neutral"
     case negative = "negative"
     case veryNegative = "very_negative"
-    
-    /// Removes underscores from string representation 
-    public func replacingUnderscoresWithSpaces() -> String { 
-        self.replacingOccurrences(of: "_", with: " ") 
-    }
-    
+
+    public var id: String { rawValue }
+
     public var description: String {
+        rawValue.replacingUnderscoresWithSpaces.capitalized
     }
     
     var color: String {
@@ -47,7 +45,7 @@ public struct SentimentResult {
     public let keyPhrases: [String]
     
     public var summary: String {
-        "\(sentiment.rawValue.capitalized) (score: \(String(format: "%.2f", score)), conf: \(String(format: "%.1f%", confidence * 100)))"
+        "\(sentiment.rawValue.capitalized) (score: \(String(format: "%.2f", score)), conf: \(String(format: "%.1f", confidence * 100))%)"
     }
 }
 

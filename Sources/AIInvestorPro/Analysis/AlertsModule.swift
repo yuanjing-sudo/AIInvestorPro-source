@@ -1,85 +1,101 @@
 // MARK: - Alerts Module
 import Foundation
+import Combine
 
-public struct Alert {
+public struct Alert: Identifiable, Equatable, Sendable {
+    public let id: String
     public let symbol: String
     public let alertType: AlertType
     public let targetPrice: Double
-    public let triggeredPrice: Double?
-    public let triggeredAt: Date?
+    public var triggeredPrice: Double?
+    public var triggeredAt: Date?
+
     public var isTriggered: Bool { triggeredPrice != nil }
-    
-    public init(symbol: String, alertType: AlertType, targetPrice: Double) {
+
+    public init(
+        id: String = UUID().uuidString,
+        symbol: String,
+        alertType: AlertType,
+        targetPrice: Double,
+        triggeredPrice: Double? = nil,
+        triggeredAt: Date? = nil
+    ) {
+        self.id = id
         self.symbol = symbol
         self.alertType = alertType
         self.targetPrice = targetPrice
-        self.triggeredAt = nil
+        self.triggeredPrice = triggeredPrice
+        self.triggeredAt = triggeredAt
     }
 }
 
-public enum AlertType: String, CaseIterable {
+public enum AlertType: String, CaseIterable, Sendable, Equatable {
     case above = "above"
     case below = "below"
     case crossAbove = "cross above"
     case crossBelow = "cross below"
 }
 
-public class AlertStore: ObservableObject {
+public final class AlertStore: ObservableObject {
     @Published public var alerts: [Alert] = []
     @Published public var triggeredCount: Int = 0
-    
+
+    /// Previous observed price per symbol, used to distinguish a real crossing
+    /// from a price that was already beyond the threshold.
+    private var lastPrices: [String: Double] = [:]
+
     public init() {}
-    
-    /// Add a new price alert
-    func add(symbol: String, alertType: AlertType, targetPrice: Double) {
-        // Check if alert already exists
-        if !alerts.contains(where: { $0.symbol == symbol && $0.alertType == alertType && $0.targetPrice == targetPrice }) {
-            alerts.append(Alert(symbol: symbol, alertType: alertType, targetPrice: targetPrice))
-        }
+
+    public func add(symbol: String, alertType: AlertType, targetPrice: Double) {
+        guard !alerts.contains(where: {
+            $0.symbol == symbol && $0.alertType == alertType && $0.targetPrice == targetPrice
+        }) else { return }
+        alerts.append(Alert(symbol: symbol, alertType: alertType, targetPrice: targetPrice))
     }
-    
-    /// Check and trigger alerts against current market data
-    func checkAlerts(for snapshots: [MarketSnapshot]) {
+
+    /// Check alerts against current snapshots. An alert only evaluates the
+    /// snapshot for its own symbol.
+    public func checkAlerts(for snapshots: [MarketSnapshot]) {
+        let prices = Dictionary(
+            snapshots.map { ($0.symbol, $0.currentPrice) },
+            uniquingKeysWith: { first, _ in first }
+        )
         triggeredCount = 0
-        
-        for snapshot in snapshots where snapshots.count > 0 {
-            for index in alerts.indices.reversed() {
-                let alert = alerts[index]
-                let currentPrice = snapshot.currentPrice
-                
-                var triggered = false
-                
-                switch alert.alertType {
-                case .above:
-                    triggered = currentPrice >= alert.targetPrice
-                case .below:
-                    triggered = currentPrice <= alert.targetPrice
-                case .crossAbove:
-                    // For cross detection, would need previous price
-                    triggered = currentPrice >= alert.targetPrice
-                case .crossBelow:
-                    // For cross detection, would need previous price
-                    triggered = currentPrice <= alert.targetPrice
-                }
-                
-                if triggered && !alert.isTriggered {
-                    // Update the alert with triggered price
-                    // Since Alert is a struct with let properties, we need to create a new one
-                    alerts[index] = Alert(
-                        symbol: alert.symbol,
-                        alertType: alert.alertType,
-                        targetPrice: alert.targetPrice
-                    )
-                    alerts[index].triggeredPrice = currentPrice
-                    alerts[index].triggeredAt = Date()
-                    triggeredCount += 1
-                }
+
+        for index in alerts.indices {
+            let symbol = alerts[index].symbol
+            guard let currentPrice = prices[symbol],
+                  !alerts[index].isTriggered else { continue }
+
+            let alert = alerts[index]
+            let previousPrice = lastPrices[symbol]
+            let triggered: Bool
+            switch alert.alertType {
+            case .above:
+                triggered = currentPrice >= alert.targetPrice
+            case .below:
+                triggered = currentPrice <= alert.targetPrice
+            case .crossAbove:
+                triggered = (previousPrice ?? alert.targetPrice) <= alert.targetPrice
+                    && currentPrice > alert.targetPrice
+            case .crossBelow:
+                triggered = (previousPrice ?? alert.targetPrice) >= alert.targetPrice
+                    && currentPrice < alert.targetPrice
+            }
+
+            if triggered {
+                alerts[index].triggeredPrice = currentPrice
+                alerts[index].triggeredAt = Date()
+                triggeredCount += 1
             }
         }
+
+        for (symbol, price) in prices {
+            lastPrices[symbol] = price
+        }
     }
-    
-    /// Clear triggered alerts
-    func clearTriggered() {
+
+    public func clearTriggered() {
         alerts.removeAll { $0.isTriggered }
         triggeredCount = 0
     }

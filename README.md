@@ -6,19 +6,25 @@ local portfolio persistence.
 
 > **Project status**
 >
-> The original `AIInvestorPro` app target (under `Sources/AIInvestorPro`) is **not
-> currently buildable**. It contains a large amount of generated-looking code with
-> missing imports, undeclared symbols, duplicate types, and syntax errors. See
-> [`docs/AUDIT.md`](docs/AUDIT.md) for the full prioritized list.
+> The original `AIInvestorPro` SwiftUI target has been repaired against every finding in
+> [`docs/AUDIT.md`](docs/AUDIT.md): imports, duplicate types, immutable-value mutation,
+> indicator math, portfolio cost basis, backtest P&L, deterministic market data and
+> `@MainActor` UI updates. The repair was performed without a local Swift toolchain, so
+> `swift build` still needs verification on macOS/Linux; see the `Swift` workflow.
 >
-> A new, dependency-free analytics library — **InvestorKit** — has been added so the
-> quantitative core can be built, tested, and reused independently while the legacy
-> app target is repaired. Nothing from the original target was removed.
+> Two independent deliverables now live in the repository:
+>
+> * **InvestorKit** — a dependency-free, tested Swift analytics library.
+> * **InvestorKit Web** — an installable, offline-first PWA under [`web/`](web/README.md)
+>   that runs the same kind of analytics on Android, iPhone, iPad, Windows, macOS,
+>   Linux, ChromeOS and any modern browser.
+>
+> Nothing from the original target was removed.
 
 ## InvestorKit
 
-`InvestorKit` is a Swift 6 library that depends only on Foundation. It is UI-independent,
-`Sendable`-friendly, and designed to be testable and deterministic.
+`InvestorKit` is a Swift 5.9+ library that depends only on Foundation. It is
+UI-independent, `Sendable`-friendly, and designed to be testable and deterministic.
 
 | Area | What is included |
 | --- | --- |
@@ -42,7 +48,7 @@ The legacy app target is excluded from the build when `INVESTORKIT_ONLY=1` is se
 git clone https://github.com/yuanjing-sudo/AIInvestorPro-source.git
 cd AIInvestorPro-source
 
-# Build and test only the new library (works while the app target is broken)
+# Build and test only the new library (no SwiftUI/Apple frameworks required)
 INVESTORKIT_ONLY=1 swift build
 INVESTORKIT_ONLY=1 swift test
 INVESTORKIT_ONLY=1 swift run InvestorKitDemo
@@ -52,22 +58,55 @@ The demo runs a strategy comparison, a max-Sharpe optimization, a Monte Carlo si
 tax-lot accounting, alerts, and a screener against synthetic data. It writes
 `demo-backtest.md` in the working directory.
 
-Without the environment variable, the manifest behaves as before and also includes the
-legacy `AIInvestorPro` executable target (which currently fails to compile).
+Without the environment variable, the manifest also includes the legacy
+`AIInvestorPro` SwiftUI executable target. That target requires macOS or an Apple
+platform toolchain; CI builds it on `macos-14`.
 
-> The new code was written without a local Swift toolchain (Termux/Android). Run the
-> commands above on macOS or Linux with Swift 6 before merging. The audit distinguishes
+> The repair was written without a local Swift toolchain (Termux/Android). Run the
+> commands above on macOS or Linux with Swift 5.9+ before merging. The audit distinguishes
 > static findings from verified build results.
+
+## Cross-platform web app (Android included)
+
+SwiftUI does not run on Android, so the same analytics are also available as a
+dependency-free, installable PWA in [`web/`](web/README.md).
+
+```bash
+cd web
+node server.mjs          # http://localhost:8080/
+npm install              # only for the JSDOM smoke test
+npm test                 # 82 numerical/unit tests
+npm run test:ui          # drives every tab in a DOM
+npm run test:all
+```
+
+The app works offline, needs no account, server, API key or network, and installs to an
+Android home screen (Chrome/Edge/Samsung Internet), an iPhone/iPad home screen (Safari
+Share → Add to Home Screen), or a desktop. Portfolio, alerts and theme are stored locally.
+
+GitHub Pages deployment is automated by
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml). Expected URL after enabling
+Pages with **GitHub Actions** as the source:
+
+```text
+https://yuanjing-sudo.github.io/AIInvestorPro-source/
+```
+
+Features: dashboard, price/chart indicators, 9-strategy backtester, constrained portfolio
+optimizer with efficient frontier, correlated Monte Carlo risk lab, screener, portfolio
+ledger with FIFO/LIFO/HIFO/LOFO tax-lot comparison, and price/RSI/volume alerts.
 
 ### Layout
 
 ```
-Sources/AIInvestorPro/     Legacy SwiftUI app target (broken; see docs/AUDIT.md)
-Sources/InvestorKit/       New dependency-free analytics library
+Sources/AIInvestorPro/     Repaired SwiftUI app target
+Sources/InvestorKit/       Dependency-free analytics library
 Sources/InvestorKitDemo/   Runnable command-line demo
 Tests/InvestorKitTests/    XCTest coverage for indicators, analytics, risk, trading,
                            screener, persistence, and export
-docs/AUDIT.md              Prioritized audit of the legacy target
+web/                       Installable cross-platform PWA and its tests
+docs/AUDIT.md              Prioritized audit and remediation record
+.github/workflows/         Swift CI and GitHub Pages deployment
 ```
 
 ## Using the library
@@ -91,11 +130,10 @@ if let report = result?.report {
 
 ## Roadmap
 
-1. **Repair the app target** in small, reviewable PRs (imports, declarations, then
-   correctness; see the remediation order in `docs/AUDIT.md`).
+1. **Verify the app target** with `swift build` on macOS and fix any remaining
+   compiler diagnostics surfaced by CI.
 2. **Wire InvestorKit into SwiftUI** behind observable, `@MainActor` view models.
-3. **Add CI** (`swift build`, `swift test`, and a macOS SwiftUI build) plus SwiftLint or
-   swift-format.
+3. **Expand CI** with a macOS SwiftUI build, SwiftLint or swift-format, and web tests.
 4. **Replace heuristics** with production-grade components:
    - a real QP solver for the optimizer,
    - a portfolio-level (multi-asset) backtester,

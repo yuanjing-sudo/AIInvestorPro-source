@@ -1,15 +1,23 @@
 // MARK: - Alpha Factors
 import Foundation
+import Combine
 
-public struct AlphaFactor: Equatable {
+/// Base alpha factor. The concrete factors below are reference types so they
+/// can share the common mutable `score` while adding their own inputs.
+public class AlphaFactor: Equatable {
     public let id: String
     public let name: String
     public let description: String
     public var score: Double
     public let calculationDate: Date
     public let lookbackPeriod: Int
-    
-    public init(name: String, description: String = "", score: Double = 0, lookbackPeriod: Int = 20) {
+
+    public init(
+        name: String,
+        description: String = "",
+        score: Double = 0,
+        lookbackPeriod: Int = 20
+    ) {
         self.id = UUID().uuidString
         self.name = name
         self.description = description
@@ -17,139 +25,169 @@ public struct AlphaFactor: Equatable {
         self.calculationDate = Date()
         self.lookbackPeriod = lookbackPeriod
     }
-    
+
     public static func == (lhs: AlphaFactor, rhs: AlphaFactor) -> Bool {
         lhs.id == rhs.id && lhs.name == rhs.name
     }
 }
 
 // MARK: - Specific Alpha Factors
-public struct MomentumAlpha: AlphaFactor {
+public final class MomentumAlpha: AlphaFactor {
     public let momentumPeriod: Int
-    
+
     public init(momentumPeriod: Int = 12) {
         self.momentumPeriod = momentumPeriod
-        super.init(name: "Momentum", description: "Price momentum over \(momentumPeriod) periods", score: 0, lookbackPeriod: momentumPeriod)
+        super.init(
+            name: "Momentum",
+            description: "Price momentum over \(momentumPeriod) periods",
+            score: 0,
+            lookbackPeriod: momentumPeriod
+        )
     }
-    
-    public mutating func calculate(from prices: [Double]) {
-        guard prices.count >= momentumPeriod else { return }
-        let change = (prices.last! - prices[prices.count - momentumPeriod]) / abs(prices[prices.count - momentumPeriod])
-        score = change * 100
+
+    public func calculate(from prices: [Double]) {
+        guard momentumPeriod > 0,
+              prices.count > momentumPeriod,
+              let last = prices.last else { return }
+        let previous = prices[prices.count - 1 - momentumPeriod]
+        guard previous != 0 else { return }
+        score = (last - previous) / abs(previous) * 100
     }
 }
 
-public struct MeanReversionAlpha: AlphaFactor {
-    public let lookbackPeriod: Int
+public final class MeanReversionAlpha: AlphaFactor {
     public let entryThreshold: Double
     public let exitThreshold: Double
-    
+
     public init(lookbackPeriod: Int = 20, entryThreshold: Double = 75, exitThreshold: Double = 30) {
-        self.lookbackPeriod = lookbackPeriod
         self.entryThreshold = entryThreshold
         self.exitThreshold = exitThreshold
-        super.init(name: "MeanReversion", description: "Reversion to mean after \(lookbackPeriod)-period deviation", score: 0, lookbackPeriod: lookbackPeriod)
+        super.init(
+            name: "MeanReversion",
+            description: "Reversion to mean after \(lookbackPeriod)-period deviation",
+            score: 0,
+            lookbackPeriod: lookbackPeriod
+        )
     }
-    
-    public mutating func calculate(from prices: [Double], rsi: Double) {
-        guard prices.count >= lookbackPeriod else { return }
-        // Mean reversion: buy when oversold, sell when overbought
+
+    public func calculate(from prices: [Double], rsi: Double) {
+        guard !prices.isEmpty, prices.count >= lookbackPeriod else { return }
         if rsi > entryThreshold {
-            score = -1 // Bearish
+            score = -1
         } else if rsi < exitThreshold {
-            score = 1 // Bullish
+            score = 1
         } else {
-            score = 0 // Neutral
+            score = 0
         }
     }
 }
 
-public struct VolatilityAlpha: AlphaFactor {
-    public let lookbackPeriod: Int
+public final class VolatilityAlpha: AlphaFactor {
     public let targetVol: Double
-    
+
     public init(lookbackPeriod: Int = 20, targetVol: Double = 15.0) {
-        self.lookbackPeriod = lookbackPeriod
         self.targetVol = targetVol
-        super.init(name: "Volatility", description: "Volatility deviation from target", score: 0, lookbackPeriod: lookbackPeriod)
+        super.init(
+            name: "Volatility",
+            description: "Volatility deviation from target",
+            score: 0,
+            lookbackPeriod: lookbackPeriod
+        )
     }
-    
-    public mutating func calculate(from returns: [Double]) {
-        guard returns.count >= lookbackPeriod else { return }
-        let avgVol = sqrt(Double(252) * returns.suffix(lookbackPeriod).map { pow($0, 2) }.reduce(0, +) / Double(lookbackPeriod)) * 100
-        score = (avgVol - targetVol) / targetVol * 100 // Positive if above target
+
+    public func calculate(from returns: [Double]) {
+        guard lookbackPeriod > 0, returns.count >= lookbackPeriod else { return }
+        let window = returns.suffix(lookbackPeriod)
+        let variance = window.map { $0 * $0 }.reduce(0, +) / Double(lookbackPeriod)
+        let annualizedVolatility = sqrt(Double(252) * variance) * 100
+        guard targetVol > 0 else { return }
+        score = (annualizedVolatility - targetVol) / targetVol * 100
     }
 }
 
-public struct ValueAlpha: AlphaFactor {
+public final class ValueAlpha: AlphaFactor {
     public let peRatio: Double?
     public let pbRatio: Double?
     public let dividendYield: Double?
-    
+
     public init(peRatio: Double? = nil, pbRatio: Double? = nil, dividendYield: Double? = nil) {
         self.peRatio = peRatio
         self.pbRatio = pbRatio
         self.dividendYield = dividendYield
-        super.init(name: "Value", description: "Fundamental value factors", score: 0, lookbackPeriod: 0)
+        super.init(
+            name: "Value",
+            description: "Fundamental value factors",
+            score: 0,
+            lookbackPeriod: 0
+        )
     }
-    
-    public mutating func calculate(from fundamentals: [String: Double]?) {
-        guard let fundamentals = fundamentals else { return }
-        
-        if let pe = peRatio {
-            // Lower PE = better value (score inversely related)
-            score = pe > 0 ? (100 / pe) * 10 : 0
+
+    public func calculate(from fundamentals: [String: Double]? = nil) {
+        if let pe = fundamentals?["pe"] ?? peRatio, pe > 0 {
+            score = (100 / pe) * 10
         }
-        
-        if let pb = pbRatio {
-            score = score + (pb > 0 ? (100 / pb) * 2 : 0)
+        if let pb = fundamentals?["pb"] ?? pbRatio, pb > 0 {
+            score += (100 / pb) * 2
         }
-        
-        if let dy = dividendYield {
-            score = score + dy * 500 // Higher dividend = better value
+        if let dividend = fundamentals?["dividendYield"] ?? dividendYield {
+            score += dividend * 500
         }
     }
 }
 
-public struct MomentumAccelerationAlpha: AlphaFactor {
+public final class MomentumAccelerationAlpha: AlphaFactor {
     public let fastPeriod: Int
     public let slowPeriod: Int
-    
+
     public init(fastPeriod: Int = 5, slowPeriod: Int = 20) {
         self.fastPeriod = fastPeriod
         self.slowPeriod = slowPeriod
-        super.init(name: "MomentumAcceleration", description: "Acceleration of momentum over fast/slow periods", score: 0, lookbackPeriod: slowPeriod)
+        super.init(
+            name: "MomentumAcceleration",
+            description: "Acceleration of momentum over fast/slow periods",
+            score: 0,
+            lookbackPeriod: slowPeriod
+        )
     }
-    
-    public mutating func calculate(from prices: [Double]) {
-        guard prices.count >= slowPeriod else { return }
-        let fastChange = (prices.last! - prices[prices.count - fastPeriod]) / abs(prices[prices.count - fastPeriod])
-        let slowChange = (prices.last! - prices[prices.count - slowPeriod]) / abs(prices[prices.count - slowPeriod])
-        // Acceleration = difference in momentum
+
+    public func calculate(from prices: [Double]) {
+        guard slowPeriod > 0, fastPeriod > 0,
+              prices.count > slowPeriod,
+              let last = prices.last else { return }
+
+        let fastBase = prices[prices.count - 1 - fastPeriod]
+        let slowBase = prices[prices.count - 1 - slowPeriod]
+        guard fastBase != 0, slowBase != 0 else { return }
+
+        let fastChange = (last - fastBase) / abs(fastBase)
+        let slowChange = (last - slowBase) / abs(slowBase)
         score = (fastChange - slowChange) * 100
     }
 }
 
-public struct ReversalAlpha: AlphaFactor {
-    public let lookbackPeriod: Int
-    
+public final class ReversalAlpha: AlphaFactor {
     public init(lookbackPeriod: Int = 10) {
-        self.lookbackPeriod = lookbackPeriod
-        super.init(name: "Reversal", description: "Price reversal detection", score: 0, lookbackPeriod: lookbackPeriod)
+        super.init(
+            name: "Reversal",
+            description: "Price reversal detection",
+            score: 0,
+            lookbackPeriod: lookbackPeriod
+        )
     }
-    
-    public mutating func calculate(from prices: [Double]) {
-        guard prices.count >= lookbackPeriod + 2 else { return }
-        // Look for reversal: price change direction opposite to recent trend
+
+    public func calculate(from prices: [Double]) {
+        guard lookbackPeriod > 0, prices.count >= lookbackPeriod + 2,
+              let first = prices.first, first != 0 else { return }
+
         let midPoint = prices.count / 2
-        let earlyChange = (prices[midPoint] - prices[0]) / abs(prices[0])
-        let lateChange = (prices.last! - prices[midPoint]) / abs(prices[midPoint])
-        
-        // If early was up and late is down (or vice versa), it's a reversal
+        guard prices[midPoint] != 0 else { return }
+        let earlyChange = (prices[midPoint] - first) / abs(first)
+        let lateChange = (prices[prices.count - 1] - prices[midPoint]) / abs(prices[midPoint])
+
         if (earlyChange > 0 && lateChange < 0) || (earlyChange < 0 && lateChange > 0) {
-            score = lateChange * 100 // Score based on reversal magnitude
+            score = lateChange * 100
         } else {
-            score = 0 // No reversal
+            score = 0
         }
     }
 }
@@ -157,32 +195,33 @@ public struct ReversalAlpha: AlphaFactor {
 // MARK: - Alpha Factor Composite
 public struct AlphaComposite {
     private var factors: [AlphaFactor] = []
-    private var weights: [String: Double] = [:] // factorName -> weight
-    
+    private var weights: [String: Double] = [:]
+
+    public init() {}
+
     public mutating func add(_ factor: AlphaFactor, weight: Double? = nil) {
         factors.append(factor)
-        if let weight = weight {
+        if let weight {
             weights[factor.name] = weight
         } else {
-            // Equal weight
             weights[factor.name] = 1.0 / Double(factors.count)
         }
     }
-    
+
     public var compositeScore: Double {
         guard !factors.isEmpty else { return 0 }
         var weightedSum = 0.0
         var totalWeight = 0.0
-        
+
         for factor in factors {
             let weight = weights[factor.name] ?? 1.0 / Double(factors.count)
             weightedSum += factor.score * weight
             totalWeight += weight
         }
-        
+
         return totalWeight > 0 ? weightedSum / totalWeight : 0
     }
-    
+
     public var recommendation: String {
         compositeScore > 0.5 ? "buy" : compositeScore < -0.5 ? "sell" : "hold"
     }
@@ -192,9 +231,8 @@ public struct AlphaComposite {
 public final class AlphaFactorRegistry: ObservableObject {
     @Published public var factors: [AlphaFactor] = []
     @Published public var composite: AlphaComposite?
-    
+
     public init() {
-        // Default factors
         factors = [
             MomentumAlpha(),
             MeanReversionAlpha(),
@@ -202,7 +240,7 @@ public final class AlphaFactorRegistry: ObservableObject {
             ValueAlpha()
         ]
     }
-    
+
     public func recalculateComposite() {
         var composite = AlphaComposite()
         for factor in factors {

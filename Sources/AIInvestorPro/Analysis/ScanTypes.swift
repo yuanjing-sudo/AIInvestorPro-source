@@ -26,7 +26,7 @@ public struct Forecast {
     }
 }
 
-public enum Recommendation: String, CaseIterable {
+public enum Recommendation: String, CaseIterable, Equatable {
     case buy
     case sell
     case hold

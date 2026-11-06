@@ -71,16 +71,19 @@ public enum LLMError: Error {
 }
 
 // MARK: - Trade Idea
-public enum Direction: String, CaseIterable {
+public enum Direction: String, CaseIterable, Identifiable, Sendable, Equatable {
     case buy
     case sell
-    
+
+    public var id: String { rawValue }
+
     public var description: String {
         rawValue.capitalized
     }
 }
 
-public struct TradeIdea {
+public struct TradeIdea: Identifiable, Sendable {
+    public var id: String { symbol }
     public let symbol: String
     public let direction: Direction
     public let entryPrice: Double

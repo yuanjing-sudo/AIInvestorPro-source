@@ -29,7 +29,7 @@ public struct AIInvestorProView: View {
                 .padding()
                 .navigationTitle("AI Investor Pro")
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItem(placement: .primaryAction) {
                         Menu("Actions") {
                             Button("Refresh") { /* refresh data */ }
                             Button("Settings") { /* open settings */ }
@@ -43,7 +43,7 @@ public struct AIInvestorProView: View {
 }
 
 public struct PortfolioSummaryView: View {
-    @ObservedObject var portfolio: Portfolio
+    @EnvironmentObject var portfolio: Portfolio
     
     public var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -71,7 +71,7 @@ public struct PortfolioSummaryView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 Spacer()
-                Text("\(String(format: "%.2f%", portfolio.totalReturn()))")
+                Text("\(String(format: "%.2f", portfolio.totalReturn()))%")
                     .foregroundColor(portfolio.totalReturn() >= 0 ? .green : .red)
             }
             
@@ -86,7 +86,7 @@ public struct PortfolioSummaryView: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.gray.opacity(0.08))
         .cornerRadius(10)
     }
 }
@@ -114,7 +114,7 @@ public struct MarketAnalysisView: View {
                 .foregroundColor(.secondary)
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.gray.opacity(0.08))
         .cornerRadius(10)
     }
 }
@@ -156,7 +156,7 @@ public struct TradeIdeasView: View {
                         HStack {
                             Text("Stop: \(String(format: "$%.2f", idea.stopLoss))")
                             Spacer()
-                            Text("Confidence: \(String(format: "%.0f%", idea.confidence * 100))%")
+                            Text("Confidence: \(String(format: "%.0f", idea.confidence * 100))%")
                         }
                         
                         Divider()
@@ -166,7 +166,7 @@ public struct TradeIdeasView: View {
             }
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.gray.opacity(0.08))
         .cornerRadius(10)
     }
 }
@@ -211,7 +211,7 @@ public struct AlertsView: View {
             .foregroundColor(.blue)
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.gray.opacity(0.08))
         .cornerRadius(10)
     }
 }

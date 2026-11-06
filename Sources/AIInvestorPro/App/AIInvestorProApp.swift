@@ -106,7 +106,7 @@ public struct PortfolioView: View {
                 .padding()
                 .navigationTitle("Portfolio")
                 .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
+                    ToolbarItem(placement: .primaryAction) {
                         Button("Add") { /* add holding */ }
                     }
                 }
@@ -157,11 +157,11 @@ struct AnalysisDetailView: View {
                         Text("\(symbol) Analysis")
                             .font(.largeTitle)
                         
-                        ReportRenderer.render(analysis)
+                        Text(ReportRenderer.render(analysis))
                             .font(.system(size: 12))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
-                            .background(Color(.systemBackground))
+                            .background(Color.gray.opacity(0.08))
                             .cornerRadius(10)
                         
                         Button("New Analysis") {
@@ -177,6 +177,31 @@ struct AnalysisDetailView: View {
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+        }
+    }
+}
+
+
+// MARK: - Settings View
+public struct SettingsView: View {
+    @AppStorage("useDarkMode") private var useDarkMode = false
+
+    public init() {}
+
+    public var body: some View {
+        NavigationView {
+            Form {
+                Section("Appearance") {
+                    Toggle("Dark Mode", isOn: $useDarkMode)
+                }
+                Section("About") {
+                    Text("AIInvestorPro")
+                    Text("Analytics are for educational purposes only and are not investment advice.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .navigationTitle("Settings")
         }
     }
 }

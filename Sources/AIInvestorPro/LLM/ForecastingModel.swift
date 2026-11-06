@@ -1,12 +1,15 @@
 // MARK: - Time Series Forecasting
 import Foundation
+import Combine
 
-public enum ForecastHorizon: String, CaseIterable {
+public enum ForecastHorizon: String, CaseIterable, Identifiable, Sendable, Equatable {
     case shortTerm = "short"   // 1-5 days
     case mediumTerm = "medium" // 6-20 days
     case longTerm = "long"     // 21-60 days
     case veryLongTerm = "very_long" // 60+ days
-    
+
+    public var id: String { rawValue }
+
     public var description: String {
         rawValue.capitalized
     }
@@ -29,7 +32,7 @@ public struct PricePoint: Identifiable {
 public struct ForecastResult: Equatable {
     public let horizon: ForecastHorizon
     public let predictedPrices: [Double]
-    public let confidenceIntervals: [Double: Double] // date -> width
+    public let confidenceIntervals: [Date: Double] // date -> width
     public let modelName: String
     public let mse: Double? // Mean Squared Error if available
     public let lastUpdated: Date
@@ -43,10 +46,11 @@ public struct ForecastResult: Equatable {
     }
     
     var trendDirection: String {
-        guard predictedPrices.count >= 2 else { return "unknown" }
-        let first = predictedPrices.first!
-        let last = predictedPrices.last!
-        let change = (last - first) / first * 100
+        guard predictedPrices.count >= 2,
+              let first = predictedPrices.first,
+              let last = predictedPrices.last,
+              first != 0 else { return "unknown" }
+        let change = (last - first) / abs(first) * 100
         return change > 0 ? "bullish" : change < 0 ? "bearish" : "sideways"
     }
 }
@@ -86,7 +90,6 @@ public class NaiveForecastModel: ForecastingModel {
             throw ForecastError.noData
         }
         
-        let lastPrice = lastPrices.last!
         let count: Int
         
         switch horizon {
@@ -96,17 +99,12 @@ public class NaiveForecastModel: ForecastingModel {
         case .veryLongTerm: count = 60
         }
         
-        // naive forecast: repeat last price (or use simple trend)
-        let trend = (lastPrices.last! - lastPrices.first!) / max(1, lastPrices.count - 1)
-        let predicted = lastPrices.last!
-        
-        var predictions: [Double] = []
-        for _ in 0..<count {
-            predictions.append(predicted)
-        }
+        // Naive forecast: repeat the last price.
+        guard let predicted = lastPrices.last else { throw ForecastError.noData }
+        let predictions = Array(repeating: predicted, count: count)
         
         // confidence widens over time
-        var confidenceBands: [Double: Double] = [:]
+        var confidenceBands: [Date: Double] = [:]
         for i in 0..<count {
             let dateOffset = Double(i + 1)
             confidenceBands[Date().addingTimeInterval(dateOffset * 86400)] = dateOffset * 2.0 // $2 per day
@@ -157,14 +155,11 @@ public class MovingAverageForecastModel: ForecastingModel {
         let window = Array(lastPrices[startIndex...])
         let ma = window.reduce(0, +) / Double(window.count)
         
-        // Simple forecast: persist the moving average
-        var predictions: [Double] = []
-        for _ in 0..<count {
-            predictions.append(ma)
-        }
+        // Simple forecast: persist the moving average.
+        let predictions = Array(repeating: ma, count: count)
         
         // Confidence decreases slightly
-        var confidenceBands: [Double: Double] = [:]
+        var confidenceBands: [Date: Double] = [:]
         for i in 0..<count {
             let dateOffset = Double(i + 1)
             confidenceBands[Date().addingTimeInterval(dateOffset * 86400)] = dateOffset * 1.5

@@ -1,7 +1,8 @@
 // MARK: - Trade Execution
 import Foundation
+import Combine
 
-public enum ExecutionStatus: String, CaseIterable {
+public enum ExecutionStatus: String, CaseIterable, Equatable, Sendable {
     case pending
     case submitted
     case partialFilled
@@ -9,37 +10,38 @@ public enum ExecutionStatus: String, CaseIterable {
     case cancelled
     case rejected
     case expired
-    
+
     public var description: String {
         rawValue.capitalized
     }
 }
 
-public enum OrderDuration: String, CaseIterable {
+public enum OrderDuration: String, CaseIterable, Sendable {
     case day = "day"
-    case gtc = "good_til_cancelled"  // Good 'til cancelled
-    case ioc = "immediate_or_cancel" // Immediate or cancel
-    case fok = "fill_or_kill"        // Fill or kill
-    
+    case gtc = "good_til_cancelled"
+    case ioc = "immediate_or_cancel"
+    case fok = "fill_or_kill"
+
     public var description: String {
         rawValue.replacingUnderscoresWithSpaces
     }
 }
 
-public enum OrderCondition: String, CaseIterable {
+public enum OrderCondition: String, CaseIterable, Sendable {
     case priceBelow = "price_below"
     case priceAbove = "price_above"
     case volumeAbove = "volume_above"
     case volumeBelow = "volume_below"
     case maCross = "moving_average_cross"
-    
+
     public var description: String {
         rawValue.replacingUnderscoresWithSpaces
     }
 }
 
 // MARK: - Execution Result
-public struct ExecutionResult {
+public struct ExecutionResult: Identifiable, Sendable {
+    public let id: String
     public let orderId: String
     public let status: ExecutionStatus
     public let filledQuantity: Double
@@ -48,176 +50,156 @@ public struct ExecutionResult {
     public let commission: Double
     public let timestamp: Date
     public let error: String?
-    
+
     public var isComplete: Bool {
-        status == .filled || status == .cancelled || status == .rejected || status == .expired
+        [.filled, .cancelled, .rejected, .expired].contains(status)
     }
-    
+
     public var isSuccessful: Bool {
         status == .filled
     }
-    
-    public var pnl: Double {
-        guard let filledPrice = filledPrice else { return 0 }
-        return filledQuantity * (filledPrice - 0) // Simplified PnL
+
+    public init(
+        id: String = UUID().uuidString,
+        orderId: String,
+        status: ExecutionStatus,
+        filledQuantity: Double,
+        filledPrice: Double?,
+        averagePrice: Double?,
+        commission: Double,
+        timestamp: Date = Date(),
+        error: String? = nil
+    ) {
+        self.id = id
+        self.orderId = orderId
+        self.status = status
+        self.filledQuantity = filledQuantity
+        self.filledPrice = filledPrice
+        self.averagePrice = averagePrice
+        self.commission = commission
+        self.timestamp = timestamp
+        self.error = error
     }
 }
 
 // MARK: - Execution Manager
-public class ExecutionManager: ObservableObject {
+@MainActor
+public final class ExecutionManager: ObservableObject {
     @Published public var activeOrders: [Order] = []
     @Published public var executionHistory: [ExecutionResult] = []
     @Published public var statusMessage: String = "Ready"
-    
+
     private var orderCounter: Int = 0
-    
+
     public init() {}
-    
-    // MARK: - Submit Order
-    /// Submit a new order for execution
-    /// - Parameter order: Order to execute
-    /// - Returns: Order ID
+
     @discardableResult
     public func submit(_ order: Order) -> String {
         orderCounter += 1
         let orderId = "ORD-\(String(format: "%06d", orderCounter))"
-        
-        // Mark as pending
-        var order = order
-        order.status = .pending
-        
-        // Add to active orders
-        activeOrders.append(order)
-        
-        // In a real implementation, this would send to exchange
-        // For now, simulate execution
+
+        var pending = order
+        pending.status = .pending
+        activeOrders.append(pending)
+
         Task {
-            await simulateExecution(orderId: orderId, order: order)
+            await simulateExecution(orderId: orderId, order: pending)
         }
-        
         return orderId
     }
-    
-    // MARK: - Simulate Execution
-    private func simulateExecution(orderId: String, _ order: Order) async {
-        // Simulate execution delay
-        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
-        
-        // Determine fill status
-        let fillProbability: Double = 0.8 // 80% fill probability
-        let randomValue = Double.random(in: 0...1)
-        
-        let result: ExecutionResult
-        
-        if randomValue < fillProbability && order.quantity > 0 {
-            // Partial or full fill
-            let fillQuantity = min(order.quantity, Double.random(in: 0...order.quantity))
-            let fillPrice = order.price ?? order.entryPrice
-            
-            result = ExecutionResult(
-                orderId: orderId,
-                status: .filled,
-                filledQuantity: fillQuantity,
-                filledPrice: fillPrice,
-                averagePrice: fillPrice,
-                commission: fillQuantity * 0.001, // $0.001 per share
-                timestamp: Date(),
-                error: nil
-            )
-            
-            // Update order status
-            if let index = activeOrders.firstIndex(where: { $0.id == order.id }) {
-                activeOrders[index].status = .filled
-                activeOrders[index].filledQuantity = fillQuantity
-                activeOrders[index].filledPrice = fillPrice
-            }
-        } else {
-            // Cancelled or rejected
-            result = ExecutionResult(
+
+    /// Deterministic paper-fill: valid marketable orders fill completely at
+    /// the limit price (or the supplied price), while orders without any price
+    /// reference are rejected. No randomness is used, so results are
+    /// reproducible.
+    private func simulateExecution(orderId: String, order: Order) async {
+        try? await Task.sleep(nanoseconds: 200_000_000)
+
+        guard order.quantity > 0,
+              let fillPrice = order.price ?? order.stopPrice,
+              fillPrice > 0 else {
+            let rejection = ExecutionResult(
                 orderId: orderId,
                 status: .rejected,
                 filledQuantity: 0,
                 filledPrice: nil,
                 averagePrice: nil,
                 commission: 0,
-                timestamp: Date(),
-                error: "Order rejected: insufficient funds or invalid parameters"
+                error: "Order rejected: missing price or quantity"
             )
+            executionHistory.append(rejection)
+            statusMessage = rejection.status.description
+            return
         }
-        
-        // Add to history
+
+        let result = ExecutionResult(
+            orderId: orderId,
+            status: .filled,
+            filledQuantity: order.quantity,
+            filledPrice: fillPrice,
+            averagePrice: fillPrice,
+            commission: order.quantity * 0.001,
+            error: nil
+        )
+
+        if let index = activeOrders.firstIndex(where: { $0.id == order.id }) {
+            activeOrders[index].status = .filled
+            activeOrders[index].filledQuantity = order.quantity
+            activeOrders[index].filledPrice = fillPrice
+            activeOrders[index].commission = result.commission
+        }
         executionHistory.append(result)
         statusMessage = result.status.description
-        
-        // Remove from active orders after some time
-        DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
-            self.activeOrders.removeAll { $0.id == orderId }
-        }
     }
-    
-    // MARK: - Cancel Order
-    /// Cancel an active order
-    /// - Parameter orderId: Order ID to cancel
+
     public func cancel(orderId: String) {
-        if let index = activeOrders.firstIndex(where: { $0.id == orderId }) {
-            activeOrders[index].status = .cancelled
-            
-            let result = ExecutionResult(
-                orderId: orderId,
-                status: .cancelled,
-                filledQuantity: 0,
-                filledPrice: nil,
-                averagePrice: nil,
-                commission: 0,
-                timestamp: Date(),
-                error: nil
-            )
-            
-            executionHistory.append(result)
-            statusMessage = "Order cancelled"
-        } else {
+        guard let index = activeOrders.firstIndex(where: { $0.id == orderId }) else {
             statusMessage = "Order not found"
+            return
         }
+        activeOrders[index].status = .cancelled
+        executionHistory.append(ExecutionResult(
+            orderId: orderId,
+            status: .cancelled,
+            filledQuantity: 0,
+            filledPrice: nil,
+            averagePrice: nil,
+            commission: 0
+        ))
+        statusMessage = "Order cancelled"
     }
-    
-    /// Replace an order (cancel and resubmit)
-    /// - Parameters:
-    ///   - orderId: Existing order ID
-    ///   - newOrder: New order to replace with
+
     public func replace(orderId: String, with newOrder: Order) {
         cancel(orderId: orderId)
         _ = submit(newOrder)
     }
-    
+
     // MARK: - Order Filtering
     public var pendingOrders: [Order] {
         activeOrders.filter { $0.status == .pending }
     }
-    
+
     public var filledOrders: [Order] {
         activeOrders.filter { $0.status == .filled }
     }
-    
+
     public var cancelledOrders: [Order] {
         activeOrders.filter { $0.status == .cancelled }
     }
-    
+
     // MARK: - Active Position Tracking
     public var openPositions: [RiskManager.Position] {
         activeOrders.compactMap { order in
-            guard let (allowed, _, positionSize) = RiskManager().canEnterTrade(
-                symbol: order.symbol,
-                quantity: order.quantity,
-                entryPrice: order.price ?? 0,
-                side: order.side
-            ) else { return nil }
-            
+            guard order.status == .filled,
+                  let price = order.filledPrice ?? order.price,
+                  price > 0 else { return nil }
+
             return RiskManager.Position(
                 symbol: order.symbol,
                 side: order.side,
-                quantity: positionSize,
-                entryPrice: order.price ?? 0,
-                currentPrice: order.price ?? 0
+                quantity: order.filledQuantity,
+                entryPrice: price,
+                currentPrice: price
             )
         }
     }
@@ -228,23 +210,16 @@ public extension Order {
     var displayPrice: String {
         price.map { "$\(String(format: "%.2f", $0))" } ?? "MKT"
     }
-    
+
     var displayDuration: String {
         duration.rawValue.replacingUnderscoresWithSpaces
     }
-    
+
     var isMarketOrder: Bool {
         type == .market
     }
-    
+
     var isLimitOrder: Bool {
         type == .limit
-    }
-}
-
-// MARK: - Duration Extension
-private extension String {
-    mutating func replacingUnderscoresWithSpaces() -> String {
-        self.replacingOccurrences(of: "_", with: " ")
     }
 }

@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="InvestorKit: dependency-free multi-asset portfolio analytics, backtesting, risk and screening. Installable on Android, iOS, desktop and any modern browser; works offline.">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="color-scheme" content="dark light">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="InvestorKit">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>InvestorKit — Portfolio Analytics on Any Device</title>
+  <script>
+    try {
+      const saved = localStorage.getItem('ik.theme');
+      if (saved === 'light' || saved === 'dark') document.documentElement.dataset.theme = saved;
+    } catch {}
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="app-header">
+    <div class="brand">
+      <img src="icons/icon.svg" alt="" width="40" height="40" class="brand-mark">
+      <div class="brand-copy">
+        <span class="brand-name">InvestorKit</span>
+        <span class="brand-tag">Portfolio analytics · any device</span>
+      </div>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab is-active" role="tab" aria-selected="true" aria-controls="tab-dashboard" data-tab="dashboard">Dashboard</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-backtest" data-tab="backtest">Backtest</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-optimize" data-tab="optimize">Optimize</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-risk" data-tab="risk">Risk</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-screener" data-tab="screener">Screener</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-portfolio" data-tab="portfolio">Portfolio</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-alerts" data-tab="alerts">Alerts</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-platform" data-tab="platform">Platform</button>
+    </nav>
+
+    <div class="header-actions">
+      <span class="status-pill" id="offline-status" title="The app shell is cached after the first load">
+        <span class="status-dot"></span><span>Local-first</span>
+      </span>
+      <button class="icon-button" id="install-button" hidden title="Install this app">Install</button>
+      <button class="icon-button" id="theme-button" title="Toggle colour theme" aria-label="Toggle colour theme">◐</button>
+    </div>
+  </header>
+
+  <main id="main" class="app-main">
+    <!-- Dashboard -->
+    <section class="tab-panel is-active" id="tab-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">Multi-asset analytics · local-first</p>
+          <h1>Understand the portfolio before the market moves.</h1>
+          <p class="lede">
+            Backtests, risk decomposition, constrained optimization, screening and tax-lot analysis
+            in one installable app. Every calculation runs on your device — Android, iPhone, tablet,
+            laptop or desktop — and keeps working offline.
+          </p>
+          <div class="hero-actions">
+            <button class="button primary" data-goto="backtest">Run a backtest</button>
+            <button class="button ghost" data-goto="risk">Open the risk lab</button>
+          </div>
+        </div>
+        <div class="hero-note">
+          <strong>No account. No server. No tracking.</strong>
+          <span>Deterministic demo market data is generated in the browser. Replace it with a live provider when you are ready.</span>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="dashboard-stats"></div>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h2>Market overview</h2>
+              <p class="muted">Demo universe · click a row to chart it</p>
+            </div>
+            <span class="pill" id="market-asof">—</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="market-table">
+              <thead>
+                <tr><th scope="col">Symbol</th><th scope="col">Price</th><th scope="col">Day</th><th scope="col">RSI</th><th scope="col">Trend</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h2 id="asset-title">SPY</h2>
+              <p class="muted" id="asset-subtitle">S&amp;P 500 ETF</p>
+            </div>
+            <label class="field compact">
+              <span class="sr-only">Chart symbol</span>
+              <select id="dashboard-symbol"></select>
+            </label>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="asset-chart" aria-label="Price chart with moving averages" role="img"></canvas>
+          </div>
+          <div class="mini-grid" id="asset-stats"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head">
+          <div>
+            <h2>Signal board</h2>
+            <p class="muted">Transparent trend, momentum and RSI checks — not recommendations.</p>
+          </div>
+        </div>
+        <div class="signal-grid" id="signal-cards"></div>
+      </article>
+
+      <article class="card platform-strip">
+        <div>
+          <h2>One codebase. Every screen.</h2>
+          <p>Install it from the browser on Android, iOS, Windows, macOS, Linux or ChromeOS. The same cached app opens without a connection.</p>
+        </div>
+        <button class="button ghost" data-goto="platform">How installation works</button>
+      </article>
+    </section>
+
+    <!-- Backtest -->
+    <section class="tab-panel" id="tab-backtest" role="tabpanel" aria-labelledby="tab-backtest" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Research</p>
+          <h1>Backtest a strategy</h1>
+          <p class="lede">Signals are computed from closing prices and executed at the next open, with commission and slippage. No lookahead.</p>
+        </div>
+      </div>
+
+      <form class="card form-grid" id="backtest-form">
+        <label class="field">
+          <span>Symbol</span>
+          <select id="bt-symbol"></select>
+        </label>
+        <label class="field">
+          <span>Strategy</span>
+          <select id="bt-strategy"></select>
+        </label>
+        <label class="field">
+          <span>Initial capital</span>
+          <input id="bt-capital" type="number" min="1000" step="1000" value="100000" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Commission (bps)</span>
+          <input id="bt-commission" type="number" min="0" max="100" step="1" value="5" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Slippage (bps)</span>
+          <input id="bt-slippage" type="number" min="0" max="100" step="1" value="2" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Capital deployed</span>
+          <input id="bt-fraction" type="number" min="1" max="100" step="1" value="100" inputmode="decimal">
+        </label>
+        <div class="form-params" id="bt-params"></div>
+        <div class="form-actions">
+          <button class="button primary" type="submit">Run backtest</button>
+          <span class="muted small" id="bt-hint">Uses 2 years of deterministic demo data.</span>
+        </div>
+      </form>
+
+      <div id="backtest-results" hidden>
+        <div class="stat-grid" id="bt-stats"></div>
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head"><div><h2>Equity curve</h2><p class="muted">Strategy vs buy &amp; hold</p></div></div>
+            <div class="chart-wrap"><canvas id="bt-equity-canvas" role="img" aria-label="Strategy and benchmark equity curves"></canvas></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Drawdown</h2><p class="muted">Peak-to-trough decline</p></div></div>
+            <div class="chart-wrap"><canvas id="bt-drawdown-canvas" role="img" aria-label="Strategy drawdown"></canvas></div>
+          </article>
+        </div>
+        <article class="card">
+          <div class="card-head"><div><h2>Trades</h2><p class="muted" id="bt-trade-summary">—</p></div></div>
+          <div class="table-wrap">
+            <table class="data-table" id="bt-trades">
+              <thead><tr><th scope="col">Entry</th><th scope="col">Exit</th><th scope="col">Bars</th><th scope="col">Entry price</th><th scope="col">Exit price</th><th scope="col">P&amp;L</th><th scope="col">Return</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Optimize -->
+    <section class="tab-panel" id="tab-optimize" role="tabpanel" aria-labelledby="tab-optimize" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Allocation</p>
+          <h1>Constrained portfolio optimizer</h1>
+          <p class="lede">Long-only projected-gradient optimization with a per-asset weight cap. Choose an objective, then inspect risk contributions.</p>
+        </div>
+      </div>
+
+      <form class="card" id="optimize-form">
+        <fieldset class="fieldset">
+          <legend>Universe</legend>
+          <div class="checkbox-grid" id="optimize-assets"></div>
+        </fieldset>
+        <div class="form-grid">
+          <label class="field">
+            <span>Objective</span>
+            <select id="opt-objective">
+              <option value="maxSharpe">Maximum Sharpe ratio</option>
+              <option value="minVariance">Minimum variance</option>
+              <option value="riskParity">Risk parity</option>
+              <option value="maxDiversification">Maximum diversification</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Max weight per asset: <strong id="opt-cap-label">35%</strong></span>
+            <input id="opt-cap" type="range" min="10" max="100" step="5" value="35">
+          </label>
+          <label class="field">
+            <span>Risk-free rate (%)</span>
+            <input id="opt-riskfree" type="number" min="0" max="20" step="0.25" value="2">
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">Optimize</button>
+          </div>
+        </div>
+      </form>
+
+      <div id="optimize-results" hidden>
+        <div class="stat-grid" id="opt-stats"></div>
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head"><div><h2>Target weights</h2><p class="muted">Constrained long-only allocation</p></div></div>
+            <div class="table-wrap">
+              <table class="data-table" id="opt-weights">
+                <thead><tr><th scope="col">Asset</th><th scope="col">Weight</th><th scope="col">Risk contribution</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Efficient frontier</h2><p class="muted">Risk-aversion sweep over the selected universe</p></div></div>
+            <div class="chart-wrap"><canvas id="frontier-canvas" role="img" aria-label="Efficient frontier chart"></canvas></div>
+          </article>
+        </div>
+        <article class="card">
+          <div class="card-head"><div><h2>Allocation bars</h2><p class="muted">Weights and marginal risk</p></div></div>
+          <div id="opt-bars" class="bar-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Risk -->
+    <section class="tab-panel" id="tab-risk" role="tabpanel" aria-labelledby="tab-risk" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Risk lab</p>
+          <h1>Stress the portfolio, not just the average.</h1>
+          <p class="lede">Correlated Monte Carlo paths, percentile bands, risk contributions and historical-style stress scenarios.</p>
+        </div>
+      </div>
+
+      <form class="card" id="risk-form">
+        <div class="card-head"><div><h2>Allocation</h2><p class="muted">Weights are normalised automatically</p></div></div>
+        <div class="table-wrap">
+          <table class="data-table" id="risk-weights">
+            <thead><tr><th scope="col">Asset</th><th scope="col">Weight (%)</th><th scope="col">Annual volatility</th><th scope="col">Risk contribution</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>Horizon (trading days)</span>
+            <input id="risk-horizon" type="number" min="5" max="1260" step="1" value="63" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>Simulations</span>
+            <input id="risk-sims" type="number" min="200" max="20000" step="100" value="2000" inputmode="numeric">
+          </label>
+          <label class="field">
+            <span>Seed</span>
+            <input id="risk-seed" type="number" min="0" max="999999" step="1" value="7" inputmode="numeric">
+          </label>
+          <div class="form-actions">
+            <button class="button primary" type="submit">Run simulation</button>
+          </div>
+        </div>
+      </form>
+
+      <div id="risk-results" hidden>
+        <div class="stat-grid" id="risk-stats"></div>
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head"><div><h2>Monte Carlo fan</h2><p class="muted">5th–95th percentile band with sample paths</p></div></div>
+            <div class="chart-wrap"><canvas id="mc-canvas" role="img" aria-label="Monte Carlo simulation fan chart"></canvas></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Risk decomposition</h2><p class="muted">Contribution to total portfolio variance</p></div></div>
+            <div class="bar-list" id="risk-bars"></div>
+          </article>
+        </div>
+        <article class="card">
+          <div class="card-head"><div><h2>Stress scenarios</h2><p class="muted">Illustrative sector shocks applied to the current allocation</p></div></div>
+          <div class="table-wrap">
+            <table class="data-table" id="stress-table">
+              <thead><tr><th scope="col">Scenario</th><th scope="col">Portfolio shock</th><th scope="col">Value impact</th><th scope="col">Largest drag</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Screener -->
+    <section class="tab-panel" id="tab-screener" role="tabpanel" aria-labelledby="tab-screener" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Discovery</p>
+          <h1>Screen the universe</h1>
+          <p class="lede">Rank assets by trend, momentum, RSI and liquidity. Filters combine so you can see only the rows that matter.</p>
+        </div>
+      </div>
+
+      <form class="card form-grid" id="screener-form">
+        <label class="field">
+          <span>Sector</span>
+          <select id="sc-sector"><option value="">All sectors</option></select>
+        </label>
+        <label class="field">
+          <span>Minimum 3-month momentum (%)</span>
+          <input id="sc-momentum" type="number" min="-100" max="200" step="1" value="-100" inputmode="decimal">
+        </label>
+        <label class="field">
+          <span>Maximum RSI</span>
+          <input id="sc-rsi" type="number" min="0" max="100" step="1" value="100" inputmode="numeric">
+        </label>
+        <label class="field">
+          <span>Sort by</span>
+          <select id="sc-sort">
+            <option value="score">Composite score</option>
+            <option value="momentum">Momentum</option>
+            <option value="rsi">RSI</option>
+            <option value="change">Daily change</option>
+            <option value="symbol">Symbol</option>
+          </select>
+        </label>
+        <label class="field checkbox-field">
+          <input id="sc-trend" type="checkbox">
+          <span>Only assets with SMA20 above SMA50</span>
+        </label>
+        <div class="form-actions">
+          <button class="button ghost" type="submit">Apply filters</button>
+        </div>
+      </form>
+
+      <article class="card">
+        <div class="card-head"><div><h2>Results</h2><p class="muted" id="sc-count">—</p></div></div>
+        <div class="table-wrap">
+          <table class="data-table" id="screener-table">
+            <thead><tr><th scope="col">Symbol</th><th scope="col">Sector</th><th scope="col">Price</th><th scope="col">Day</th><th scope="col">3M</th><th scope="col">RSI</th><th scope="col">Score</th><th scope="col">Signals</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <!-- Portfolio -->
+    <section class="tab-panel" id="tab-portfolio" role="tabpanel" aria-labelledby="tab-portfolio" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Ledger</p>
+          <h1>Portfolio &amp; tax lots</h1>
+          <p class="lede">Track holdings with average cost, unrealized P&amp;L and lot-level disposal. Data stays in this browser.</p>
+        </div>
+        <div class="section-actions">
+          <button class="button ghost" id="portfolio-demo">Load demo portfolio</button>
+          <button class="button ghost danger" id="portfolio-reset">Reset</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="portfolio-summary"></div>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><h2>Holdings</h2><p class="muted">Marked at the latest demo close</p></div></div>
+          <div class="table-wrap">
+            <table class="data-table" id="holdings-table">
+              <thead><tr><th scope="col">Symbol</th><th scope="col">Shares</th><th scope="col">Avg cost</th><th scope="col">Price</th><th scope="col">Value</th><th scope="col">Unrealized</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head"><div><h2>Add a transaction</h2><p class="muted">Buys create a lot; sells use FIFO</p></div></div>
+          <form class="form-grid compact-grid" id="transaction-form">
+            <label class="field"><span>Symbol</span><select id="tx-symbol"></select></label>
+            <label class="field"><span>Side</span><select id="tx-side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
+            <label class="field"><span>Shares</span><input id="tx-quantity" type="number" min="0.0001" step="0.0001" value="1" inputmode="decimal"></label>
+            <label class="field"><span>Price</span><input id="tx-price" type="number" min="0.01" step="0.01" inputmode="decimal"></label>
+            <label class="field"><span>Fee</span><input id="tx-fee" type="number" min="0" step="0.01" value="0" inputmode="decimal"></label>
+            <div class="form-actions"><button class="button primary" type="submit">Record transaction</button></div>
+          </form>
+          <p class="muted small" id="tx-hint">Prices default to the latest demo quote.</p>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head"><div><h2>Tax-lot comparison</h2><p class="muted">Estimate the realized gain under each disposal method — illustrative only.</p></div></div>
+        <form class="form-inline" id="tax-form">
+          <label class="field"><span>Symbol</span><select id="tax-symbol"></select></label>
+          <label class="field"><span>Shares to sell</span><input id="tax-quantity" type="number" min="0.0001" step="0.0001" value="1" inputmode="decimal"></label>
+          <label class="field"><span>Sale price</span><input id="tax-price" type="number" min="0.01" step="0.01" inputmode="decimal"></label>
+          <button class="button ghost" type="submit">Compare</button>
+        </form>
+        <div class="table-wrap">
+          <table class="data-table" id="tax-table">
+            <thead><tr><th scope="col">Method</th><th scope="col">Cost basis</th><th scope="col">Realized gain</th><th scope="col">Tax-efficient rank</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="muted small">This compares lot accounting only. It does not model short/long-term rates, wash sales or local tax rules.</p>
+      </article>
+    </section>
+
+    <!-- Alerts -->
+    <section class="tab-panel" id="tab-alerts" role="tabpanel" aria-labelledby="tab-alerts" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Monitoring</p>
+          <h1>Price &amp; indicator alerts</h1>
+          <p class="lede">Rules run locally against the latest demo data. They are saved in this browser and evaluated when you tap Check now, with a 30-minute cooldown per rule.</p>
+        </div>
+        <div class="section-actions"><button class="button ghost" id="alerts-check">Check now</button></div>
+      </div>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><h2>New rule</h2><p class="muted">Price, daily move, RSI or volume</p></div></div>
+          <form class="form-grid compact-grid" id="alert-form">
+            <label class="field"><span>Symbol</span><select id="alert-symbol"></select></label>
+            <label class="field"><span>Condition</span><select id="alert-type"></select></label>
+            <label class="field"><span>Threshold</span><input id="alert-threshold" type="number" step="0.01" required inputmode="decimal"></label>
+            <label class="field full"><span>Note (optional)</span><input id="alert-note" type="text" maxlength="80" placeholder="e.g. review position size"></label>
+            <div class="form-actions"><button class="button primary" type="submit">Create alert</button></div>
+          </form>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><h2>Active rules</h2><p class="muted" id="alerts-count">0 rules</p></div></div>
+          <div id="alerts-list" class="list"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head"><div><h2>Trigger history</h2><p class="muted">Most recent first · 30-minute cooldown per rule</p></div><button class="button ghost small" id="alerts-clear">Clear history</button></div>
+        <div id="alerts-history" class="list"></div>
+      </article>
+    </section>
+
+    <!-- Platform -->
+    <section class="tab-panel" id="tab-platform" role="tabpanel" aria-labelledby="tab-platform" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Platform</p>
+          <h1>One app, every device</h1>
+          <p class="lede">InvestorKit is a standards-based progressive web app. It does not need an app store, a build step or a backend.</p>
+        </div>
+      </div>
+
+      <div class="grid two">
+        <article class="card">
+          <h2>Install on Android</h2>
+          <ol class="steps">
+            <li>Open this page in Chrome, Edge or Samsung Internet.</li>
+            <li>Tap the browser menu and choose <strong>Add to Home screen</strong> or <strong>Install app</strong>.</li>
+            <li>Launch it like any other app. It opens full-screen and works offline after the first load.</li>
+          </ol>
+          <h2>Install on iPhone / iPad</h2>
+          <ol class="steps">
+            <li>Open this page in Safari.</li>
+            <li>Tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</li>
+            <li>Launch from the home screen for a standalone window.</li>
+          </ol>
+          <h2>Desktop</h2>
+          <p class="muted">Chrome and Edge show an install icon in the address bar. The install button in the header appears when the browser supports it.</p>
+        </article>
+
+        <article class="card">
+          <h2>What runs where</h2>
+          <ul class="check-list">
+            <li><strong>Calculations:</strong> JavaScript on the device. No analytics or portfolio data leaves the browser.</li>
+            <li><strong>Storage:</strong> <code>localStorage</code> for portfolio, alerts and theme. Clearing site data resets it.</li>
+            <li><strong>Offline:</strong> a service worker caches the app shell and all modules.</li>
+            <li><strong>Charts:</strong> canvas, no charting dependency.</li>
+            <li><strong>Data:</strong> deterministic synthetic candles seeded by symbol. Swap in a provider in <code>js/core/marketdata.js</code>.</li>
+          </ul>
+          <h2>Architecture</h2>
+          <p class="muted">
+            The same numerical core is covered by the Node test suite (<code>npm test</code>).
+            The Swift package adds <code>InvestorKit</code>, an XCTest suite, a demo executable and a
+            native SwiftUI surface where Apple platforms are available.
+          </p>
+          <a class="button ghost" href="https://github.com/yuanjing-sudo/AIInvestorPro-source" rel="noopener">View source on GitHub</a>
+        </article>
+      </div>
+
+      <article class="card disclaimer">
+        <h2>Scope and limitations</h2>
+        <p>
+          The bundled market data is synthetic and intended for demonstration, testing and UI evaluation.
+          Nothing here is investment advice. Backtest results are sensitive to costs, slippage, survivorship
+          and the chosen sample; a positive historical result does not imply future performance.
+        </p>
+      </article>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <span>InvestorKit · local-first portfolio analytics</span>
+    <span>Educational use only · not investment advice</span>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="js/ui/app.js"></script>
+</body>
+</html>

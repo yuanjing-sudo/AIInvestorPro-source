@@ -7,12 +7,12 @@ is a compiler transcript. Line numbers refer to that commit.
 
 ## TL;DR
 
-The legacy app target **does not compile in its current state**. The problems are not
-isolated: missing imports, undeclared types and members, duplicate declarations, invalid
-Swift syntax, and immutable-value mutation are spread across every layer (app, domain,
-analysis, LLM, risk, trading, services). Fixing them one by one will surface more errors,
-so the practical path is a staged repair (see the end of this document) or a rewrite of
-the target on top of the new `InvestorKit` library.
+At audit time the legacy app target **did not compile**. The problems were not isolated:
+missing imports, undeclared types and members, duplicate declarations, invalid Swift
+syntax, and immutable-value mutation were spread across every layer (app, domain,
+analysis, LLM, risk, trading, services). The `feature/investor-kit` branch contains a
+static repair of those findings; compiler verification is still pending (see
+“Remediation status” below).
 
 The new `InvestorKit` target deliberately does not depend on any of this code. It is a
 clean, tested reference implementation of the quantitative pieces (indicators, risk,
@@ -20,6 +20,37 @@ backtesting, optimization, tax lots, alerts, screening, persistence, export).
 
 Severity scale: **P0** = target cannot build; **P1** = builds but produces wrong results or
 is unsafe; **P2** = architecture, testing, performance, or product quality.
+
+## Remediation status (`feature/investor-kit`)
+
+The findings below are preserved as the original audit. The `feature/investor-kit` branch
+now contains a static repair pass, a dependency-free `InvestorKit` library, and a
+cross-platform PWA. No Swift toolchain was available in the repair environment, so the
+repair is **statically reviewed but not compiler-verified**; the new `Swift` workflow runs
+`swift build`/`swift test` on macOS and Linux.
+
+| Original finding | Status after repair |
+| --- | --- |
+| Missing `import Combine` (P0.1) | Fixed in all listed files; `Portfolio` is now an `ObservableObject` class. |
+| Duplicate `TradeSignal`; duplicate sizing methods (P0.2) | Consolidated to one `TradeSignal`; each sizing type has exactly one protocol method. |
+| Undeclared symbols: `MACDSignal`, `absoluteValue`, `mean`, `formattedCurrency`, `replacingUnderscoresWithSpaces`, `Market.Regime`, `cloves`, undefined `gains`/`losses`, `Order.entryPrice`/`duration` (P0.3) | Fixed by shared helpers, corrected call sites, a computed `Order.duration`, and a rewritten `StockAnalyzer`. |
+| Invalid syntax in `AlphaFactors`, `Setups`, `NNModel`, `PatternRecognitionModel`, `SentimentAnalysis`, `Pairs`, `RiskManager`, `SignalGenerator`, `BacktestEngine` (P0.4) | Alpha factors are reference types; setup registry uses value descriptors; malformed extensions and expressions removed. |
+| Immutable values mutated (P0.5) | `Holding`, `TradeRecord`, and `Alert` trigger fields are mutable; position reduction uses arithmetic instead of `remove`. |
+| Model/API mismatches (P0.6) | `Screener` API aligned; duplicate-symbol scans deduplicated by best score; short/empty inputs return neutral scans. |
+| Indicator math (P1.1–P1.6) | SMA guard and EMA weighting corrected; Wilder RSI/ATR; MACD signal line computed from EMA series; short histories use neutral defaults. |
+| Portfolio accounting (P1) | Weighted average cost, cost-basis denominator, cash-inclusive return denominator, and documented neutral volatility/beta. |
+| Backtesting P&L/slippage/force unwraps (P1) | Deterministic fixed slippage, commission-aware P&L, net sell P&L, safe empty metrics; next-bar timing remains the caller's responsibility. |
+| Yahoo timestamps and randomness (P1) | Timestamps use one anchor; synthetic values are deterministic by symbol and explicitly documented as demo data. The HTTP/rate-limit path is still non-networking. |
+| Alerts compilation/crossing/re-firing (P1) | Trigger fields are assignable; `crossAbove`/`crossBelow` compare against the previous observed price; fired alerts stay fired until cleared. |
+| Screener duplicates/units/edges (P1) | Best-per-symbol dedupe, percent-consistent momentum, guards for short histories, and `horizon` is a lookback only. |
+| Concurrency/state (P1) | `MarketPipeline` and `ExecutionManager` are `@MainActor`; progress has a single source; execution is deterministic paper-fill. |
+| CI/tests (P2) | 41 XCTest cases, 82 web unit tests, a JSDOM UI smoke test, Swift CI, Pages CI. |
+
+**Still open / deliberately deferred:** compiler verification of the legacy target,
+next-bar execution inside the legacy `BacktestEngine` API, a true actor or lock around
+`YahooService` rate limiting, `@MainActor` isolation for every LLM registry, stable
+`Holding.id` values across reconstruction, real market-data adapters, and the P2
+architecture/security/UX items listed later in this document.
 
 ## Scorecard
 

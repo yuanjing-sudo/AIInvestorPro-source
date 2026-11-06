@@ -1,5 +1,6 @@
 // MARK: - Neural Network Models
 import Foundation
+import Combine
 
 public enum NeuralNetworkType: String, CaseIterable {
     case pricePrediction = "price_prediction"
@@ -8,7 +9,7 @@ public enum NeuralNetworkType: String, CaseIterable {
     case sentimentAnalysis = "sentiment_analysis"
     
     public var description: String {
-        rawValue.replacingUnderscoresWithSpaces()
+        rawValue.replacingUnderscoresWithSpaces
     }
 }
 
@@ -89,11 +90,5 @@ public final class ModelRegistry: ObservableObject {
         case .sentimentAnalysis:
             modelInfo = "Sentiment Analysis Model - news/social media analysis"
         }
-    }
-}
-
-// Helper extension for string manipulation
-public extension String {
-        self.replacingOccurrences(of: "_", with: " ")
     }
 }

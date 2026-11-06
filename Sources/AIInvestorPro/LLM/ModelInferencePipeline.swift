@@ -1,170 +1,202 @@
 // MARK: - Model Inference Pipeline
 import Foundation
+import Combine
 
-public enum ModelType: String, CaseIterable {
+public enum ModelType: String, CaseIterable, Sendable, Equatable {
     case linearRegression = "linear_regression"
     case randomForest = "random_forest"
     case neuralNetwork = "neural_network"
     case xgBoost = "xgboost"
     case timeSeries = "time_series"
-    
+
     public var description: String {
-        rawValue.replacingUnderscoresWithSpaces()
+        rawValue.replacingUnderscoresWithSpaces
     }
 }
 
-public enum PredictionType: String, CaseIterable {
-    case priceDirection = "price_direction"   // Up/Down
-    case priceValue = "price_value"         // Specific price
-    case volatility = "volatility"          // Expected volatility
-    case regime = "regime"                  // Market regime
-    case risk = "risk"                      // Risk metric
-    
+public enum PredictionType: String, CaseIterable, Sendable, Equatable {
+    case priceDirection = "price_direction"
+    case priceValue = "price_value"
+    case volatility = "volatility"
+    case regime = "regime"
+    case risk = "risk"
+
     public var description: String {
-        rawValue.replacingUnderscoresWithSpaces()
+        rawValue.replacingUnderscoresWithSpaces
     }
 }
 
-public struct ModelPrediction: Equatable {
+public struct ModelPrediction: Equatable, Sendable {
     public let modelType: ModelType
     public let predictionType: PredictionType
-    public let predictedValue: Double
-    public let confidence: Double // 0.0 - 1.0
-    public let predictionInterval: ClosedRange<Double> // Lower and upper bound
+    public var predictedValue: Double
+    public var confidence: Double
+    public let predictionInterval: ClosedRange<Double>
     public let featuresUsed: [String]
     public let modelVersion: String
     public let timestamp: Date
-    
-    public static func == (lhs: ModelPrediction, rhs: ModelPrediction) -> Bool {
-        lhs.modelType == rhs.modelType && lhs.predictedValue == rhs.predictedValue && lhs.confidence == rhs.confidence
+
+    public init(
+        modelType: ModelType,
+        predictionType: PredictionType,
+        predictedValue: Double,
+        confidence: Double,
+        predictionInterval: ClosedRange<Double>,
+        featuresUsed: [String],
+        modelVersion: String,
+        timestamp: Date = Date()
+    ) {
+        self.modelType = modelType
+        self.predictionType = predictionType
+        self.predictedValue = predictedValue
+        self.confidence = confidence
+        self.predictionInterval = predictionInterval
+        self.featuresUsed = featuresUsed
+        self.modelVersion = modelVersion
+        self.timestamp = timestamp
     }
-    
+
+    public static func == (lhs: ModelPrediction, rhs: ModelPrediction) -> Bool {
+        lhs.modelType == rhs.modelType &&
+        lhs.predictedValue == rhs.predictedValue &&
+        lhs.confidence == rhs.confidence
+    }
+
     var description: String {
-        "\(modelType.rawValue) → \(predictionType.rawValue): \(String(format: "%.4f", predictedValue)) ± \(String(format: "%.2f", confidenceInterval.lowerBound))-\(String(format: "%.2f", confidenceInterval.upperBound)) (\(String(format: "%.1f%", confidence * 100))% conf)"
+        "\(modelType.rawValue) → \(predictionType.rawValue): \(String(format: "%.4f", predictedValue)) ± \(String(format: "%.2f", predictionInterval.lowerBound))-\(String(format: "%.2f", predictionInterval.upperBound)) (\(String(format: "%.1f", confidence * 100))% conf)"
     }
 }
 
 public final class ModelInferencePipeline {
-    private let featureEngineer: FeatureEngineer
-    private let featureNames: [String]
+    public let modelType: ModelType = .linearRegression
+    public let featureEngineer: FeatureEngineer
+    public let featureNames: [String]
     private var modelWeights: [Double]?
     private var modelBias: Double?
-    private var isTrained = false
-    
+    public private(set) var isTrained = false
+
     public init(featureEngineer: FeatureEngineer? = nil) {
-        self.featureEngineer = featureEngineer ?? FeatureEngineer()
-        self.featureNames = featureEngineer?.featureNames() ?? FeatureType.allCases.map { $0.rawValue }
+        let engineer = featureEngineer ?? FeatureEngineer(prices: [100, 101, 102])
+        self.featureEngineer = engineer
+        self.featureNames = engineer.featureNames()
     }
-    
-    // Train simple linear model on provided data
+
+    /// Train a simple multivariate linear model. Features are generated from
+    /// rolling price windows; coefficients are univariate covariances, which is
+    /// a fast, deterministic baseline rather than a full least-squares fit.
     public func train(_ historicalPrices: [Double], _ targetReturns: [Double]) {
-        guard historicalPrices.count == targetReturns.count && historicalPrices.count > 10 else {
-            print("Insufficient data for training")
+        let minimumHistory = 25
+        guard historicalPrices.count == targetReturns.count,
+              historicalPrices.count > minimumHistory else {
             return
         }
-        
-        // Simple linear regression: y = wx + b
-        let n = Double(historicalPrices.count)
-        let xMean = featureEngineer.featureArray().reduce(0, +) / n
-        let yMean = targetReturns.reduce(0, +) / n
-        
-        // Calculate weights using simple formula
-        var numerator = 0.0
-        var denominator = 0.0
-        
-        for i in 0..<historicalPrices.count {
-            let x = featureEngineer.featureArray()[i % featureEngineer.featureArray().count]
-            let y = targetReturns[i]
-            numerator += (x - xMean) * (y - yMean)
-            denominator += pow(x - xMean, 2)
+
+        let start = minimumHistory
+        let featureCount = featureNames.count
+        guard featureCount > 0 else { return }
+
+        var rows: [[Double]] = []
+        var targets: [Double] = []
+        for index in start..<historicalPrices.count {
+            let prefix = Array(historicalPrices[0...index])
+            let engineer = FeatureEngineer(prices: prefix)
+            rows.append(engineer.featureArray())
+            targets.append(targetReturns[index])
         }
-        
-        modelWeights = denominator > 0 ? numerator / denominator : 0
-        modelBias = yMean - modelWeights! * xMean
+        guard !rows.isEmpty else { return }
+
+        var means = Array(repeating: 0.0, count: featureCount)
+        var targetMean = targets.mean
+        for row in rows {
+            for index in 0..<featureCount {
+                means[index] += row[index]
+            }
+        }
+        for index in 0..<featureCount {
+            means[index] /= Double(rows.count)
+        }
+
+        var weights = Array(repeating: 0.0, count: featureCount)
+        for index in 0..<featureCount {
+            var covariance = 0.0
+            var variance = 0.0
+            for rowIndex in rows.indices {
+                let x = rows[rowIndex][index] - means[index]
+                covariance += x * (targets[rowIndex] - targetMean)
+                variance += x * x
+            }
+            weights[index] = variance > 0 ? covariance / variance : 0
+        }
+
+        let bias = targetMean - zip(weights, means).reduce(0) { $0 + $1.0 * $1.1 }
+        modelWeights = weights
+        modelBias = bias
         isTrained = true
     }
-    
-    // Make prediction using trained model
+
     public func predict(_ features: [Double]) -> ModelPrediction {
-        guard isTrained, let weights = modelWeights, let bias = modelBias else {
+        guard isTrained,
+              let weights = modelWeights,
+              let bias = modelBias,
+              features.count == weights.count else {
             return ModelPrediction(
                 modelType: .linearRegression,
                 predictionType: .priceValue,
                 predictedValue: 0,
-                confidence: 0.0,
+                confidence: 0,
                 predictionInterval: 0...0,
                 featuresUsed: featureNames,
-                modelVersion: "1.0.0",
-                timestamp: Date()
+                modelVersion: "1.0.0"
             )
         }
-        
-        // Calculate prediction
+
         let prediction = zip(features, weights).reduce(0) { $0 + $1.0 * $1.1 } + bias
-        let confidence = min(1.0, 0.5 + abs(prediction) * 0.1) // Simple confidence based on magnitude
-        
-        // Prediction interval: ± 1 standard deviation estimate
-        let margin = 0.5 * abs(prediction) * 0.1
-        let lower = prediction - margin
-        let upper = prediction + margin
-        
+        let confidence = min(1.0, 0.5 + abs(prediction) * 0.1)
+        let margin = max(0, abs(prediction) * 0.05)
         return ModelPrediction(
             modelType: .linearRegression,
             predictionType: .priceValue,
             predictedValue: prediction,
             confidence: confidence,
-            predictionInterval: lower...upper,
+            predictionInterval: (prediction - margin)...(prediction + margin),
             featuresUsed: featureNames,
-            modelVersion: "1.0.0",
-            timestamp: Date()
+            modelVersion: "1.0.0"
         )
     }
-    
-    // Predict using multiple model types
+
     public func predictEnsemble(_ features: [Double], models: [ModelType] = [.linearRegression]) -> ModelPrediction {
-        var predictions: [ModelPrediction] = []
-        
-        for modelType in models {
-            let pred = predict(features)
-            // Adjust confidence based on model type
-            var adjustedPred = pred
-            adjustedPred.predictedValue *= modelType == .linearRegression ? 1.0 : 0.9
-            adjustedPred.confidence *= modelType == .linearRegression ? 1.0 : 0.8
-            predictions.append(adjustedPred)
+        let predictions = models.map { modelType -> ModelPrediction in
+            var prediction = predict(features)
+            if modelType != .linearRegression {
+                prediction.predictedValue *= 0.9
+                prediction.confidence *= 0.8
+            }
+            return prediction
         }
-        
-        // Average predictions
-        if !predictions.isEmpty {
-            let avgPrediction = predictions.map { $0.predictedValue }.reduce(0, +) / Double(predictions.count)
-            let avgConfidence = predictions.map { $0.confidence }.reduce(0, +) / Double(predictions.count)
-            let lower = predictions.map { $0.predictionInterval.lowerBound }.reduce(0, +) / Double(predictions.count)
-            let upper = predictions.map { $0.predictionInterval.upperBound }.reduce(0, +) / Double(predictions.count)
-            
-            return ModelPrediction(
-                modelType: .linearRegression, // Use first model as wrapper
-                predictionType: .priceValue,
-                predictedValue: avgPrediction,
-                confidence: avgConfidence,
-                predictionInterval: lower...upper,
-                featuresUsed: featureNames,
-                modelVersion: "ensemble_1.0.0",
-                timestamp: Date()
-            )
-        } else {
-            return predict(features)
-        }
+        guard !predictions.isEmpty else { return predict(features) }
+
+        let count = Double(predictions.count)
+        let averagePrediction = predictions.map(\.predictedValue).reduce(0, +) / count
+        let averageConfidence = predictions.map(\.confidence).reduce(0, +) / count
+        let lower = predictions.map(\.predictionInterval.lowerBound).reduce(0, +) / count
+        let upper = predictions.map(\.predictionInterval.upperBound).reduce(0, +) / count
+        return ModelPrediction(
+            modelType: models.first ?? .linearRegression,
+            predictionType: .priceValue,
+            predictedValue: averagePrediction,
+            confidence: averageConfidence,
+            predictionInterval: min(lower, upper)...max(lower, upper),
+            featuresUsed: featureNames,
+            modelVersion: "ensemble_1.0.0"
+        )
     }
-    
-    // Get feature importance (simple based on weight magnitude)
+
     public func featureImportance() -> [String: Double] {
         guard let weights = modelWeights else { return [:] }
-        
         var importance: [String: Double] = [:]
-        for (i, name) in featureNames.enumerated() {
-            importance[name] = abs(weights[i])
+        for (index, name) in featureNames.enumerated() where index < weights.count {
+            importance[name] = abs(weights[index])
         }
-        
-        // Sort by importance descending
         return Dictionary(uniqueKeysWithValues: importance.sorted { $0.value > $1.value })
     }
 }
@@ -174,27 +206,29 @@ public final class InferenceRegistry: ObservableObject {
     @Published public var lastPrediction: ModelPrediction?
     @Published public var modelInfo: String = "No model loaded"
     @Published public var isModelTrained = false
-    
+
     private var pipeline: ModelInferencePipeline?
-    
+
+    public init() {}
+
     public func setPipeline(_ pipeline: ModelInferencePipeline) {
         self.pipeline = pipeline
         isModelTrained = pipeline.isTrained
         modelInfo = "Model: \(pipeline.modelType.rawValue) - \(pipeline.featureEngineer.featureArray().count) features"
     }
-    
+
     public func trainOnData(_ prices: [Double], _ targets: [Double]) {
         pipeline?.train(prices, targets)
-        isModelTrained = pipeline!.isTrained
+        isModelTrained = pipeline?.isTrained ?? false
         modelInfo = "Trained on \(prices.count) data points"
     }
-    
+
     public func predictCurrent(prices: [Double], featureEngineer: FeatureEngineer) {
+        _ = featureEngineer
         let engineer = FeatureEngineer(prices: prices)
         let features = engineer.featureArray()
         let prediction = pipeline?.predict(features)
-        
         lastPrediction = prediction
-        modelInfo = "Current prediction: \(String(format: "%.2f", prediction?.predictedValue ?? 0)) (\(String(format: "%.1f%", prediction?.confidence ?? 0) * 100))% conf"
+        modelInfo = "Current prediction: \(String(format: "%.2f", prediction?.predictedValue ?? 0)) (\(String(format: "%.1f", (prediction?.confidence ?? 0) * 100))% conf)"
     }
 }
