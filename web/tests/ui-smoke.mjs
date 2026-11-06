@@ -75,9 +75,40 @@ await wait(120);
 
 // Dashboard
 assert(document.querySelectorAll('#dashboard-stats .stat').length === 4, 'dashboard stat cards');
-assert(document.querySelectorAll('#market-table tbody tr[data-symbol]').length === 15, 'market rows');
+assert(document.querySelectorAll('#market-table tbody tr[data-symbol]').length === 26, 'market rows');
 assert(document.querySelectorAll('#signal-cards .signal-card').length === 8, 'signal cards');
+assert(document.querySelectorAll('#ticker-strip .ticker-item').length === 7, 'ticker items');
 assert(document.querySelector('#asset-chart').width > 0, 'asset chart sized');
+
+// Research terminal
+document.querySelector('[data-tab="research"]').click();
+await wait(80);
+assert(document.querySelectorAll('#research-stats .stat').length === 8, 'research stats');
+assert(document.querySelectorAll('#research-correlation tbody tr').length >= 5, 'correlation matrix');
+assert(document.querySelectorAll('#research-news .news-item').length >= 4, 'research news');
+assert(document.querySelectorAll('#research-fundamentals tbody tr').length >= 8, 'fundamental rows');
+assert(document.querySelectorAll('#research-macro .macro-cell').length >= 8, 'macro cells');
+assert(document.querySelectorAll('#research-horizons .horizon-cell').length === 8, 'multi-horizon scorecard');
+
+// Forecast studio
+document.querySelector('[data-tab="forecast"]').click();
+submit('#forecast-form');
+await wait(900);
+assert(document.querySelector('#forecast-results').hidden === false, 'forecast results visible');
+assert(document.querySelectorAll('#fc-stats .stat').length === 8, 'forecast stats');
+assert(document.querySelectorAll('#fc-models .model-row').length === 3, 'forecast models');
+assert(document.querySelectorAll('#fc-diagnostics .metric-cell').length === 8, 'forecast diagnostics');
+assert(document.querySelectorAll('#fc-scenarios .scenario-row').length === 3, 'forecast scenarios');
+assert(document.querySelector('#fc-chart').width > 0, 'forecast chart sized');
+
+// Command palette
+document.querySelector('#command-open').click();
+await wait(30);
+assert(document.querySelectorAll('#command-results .command-item').length > 0, 'command palette results');
+document.querySelector('#command-input').value = 'NVDA';
+document.querySelector('#command-input').dispatchEvent(new window.Event('input', { bubbles: true }));
+await wait(20);
+assert(document.querySelector('#command-results').textContent.includes('NVDA'), 'command palette filters assets');
 
 // Backtest
 document.querySelector('[data-tab="backtest"]').click();
@@ -163,4 +194,4 @@ if (errors.length) {
   throw new Error(`Browser errors: ${errors.map((error) => error?.stack ?? error).join('\n')}`);
 }
 
-console.log('UI smoke passed: dashboard, backtest, optimize, risk, screener, portfolio, tax lots, alerts, navigation.');
+console.log('UI smoke passed: dashboard, research, forecast, backtest, optimize, risk, screener, portfolio, tax lots, alerts, command palette, navigation.');

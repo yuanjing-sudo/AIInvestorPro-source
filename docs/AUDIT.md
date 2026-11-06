@@ -46,7 +46,7 @@ legacy target builds and runs the `InvestorKitTests` filter on `macos-15`.
 | Alerts compilation/crossing/re-firing (P1) | Trigger fields are assignable; `crossAbove`/`crossBelow` compare against the previous observed price; fired alerts stay fired until cleared. |
 | Screener duplicates/units/edges (P1) | Best-per-symbol dedupe, percent-consistent momentum, guards for short histories, and `horizon` is a lookback only. |
 | Concurrency/state (P1) | `MarketPipeline` and `ExecutionManager` are `@MainActor`; progress has a single source; execution is deterministic paper-fill. |
-| CI/tests (P2) | 41 XCTest cases, 82 web unit tests, a JSDOM UI smoke test, and green Swift CI on Linux + macOS. |
+| CI/tests (P2) | 41 XCTest cases, 100 web unit tests, a JSDOM UI smoke test, and green Swift CI on Linux + macOS. |
 
 **Still open / deliberately deferred:** next-bar execution inside the legacy
 `BacktestEngine` API, a true actor or lock around

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="InvestorKit: dependency-free multi-asset portfolio analytics, backtesting, risk and screening. Installable on Android, iOS, desktop and any modern browser; works offline.">
-  <meta name="theme-color" content="#0b1220">
+  <meta name="description" content="InvestorKit Pro: multi-asset research, forecasting, backtesting, risk and portfolio analytics. Installable on Android, iOS, desktop and any modern browser; works offline.">
+  <meta name="theme-color" content="#05080f">
   <meta name="color-scheme" content="dark light">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,7 +13,7 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
-  <title>InvestorKit — Portfolio Analytics on Any Device</title>
+  <title>InvestorKit Pro — Portfolio Intelligence</title>
   <script>
     try {
       const saved = localStorage.getItem('ik.theme');
@@ -28,23 +28,19 @@
     <div class="brand">
       <img src="icons/icon.svg" alt="" width="40" height="40" class="brand-mark">
       <div class="brand-copy">
-        <span class="brand-name">InvestorKit</span>
-        <span class="brand-tag">Portfolio analytics · any device</span>
+        <span class="brand-name">InvestorKit<span class="brand-pro">PRO</span></span>
+        <span class="brand-tag">Portfolio intelligence · any device</span>
       </div>
     </div>
 
-    <nav class="tabs" role="tablist" aria-label="Sections">
-      <button class="tab is-active" role="tab" aria-selected="true" aria-controls="tab-dashboard" data-tab="dashboard">Dashboard</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-backtest" data-tab="backtest">Backtest</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-optimize" data-tab="optimize">Optimize</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-risk" data-tab="risk">Risk</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-screener" data-tab="screener">Screener</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-portfolio" data-tab="portfolio">Portfolio</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-alerts" data-tab="alerts">Alerts</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="tab-platform" data-tab="platform">Platform</button>
-    </nav>
+    <button type="button" class="command-trigger" id="command-open" aria-haspopup="dialog">
+      <span class="command-glyph">⌕</span>
+      <span>Search assets, pages, actions</span>
+      <kbd>⌘K</kbd>
+    </button>
 
     <div class="header-actions">
+      <span class="asof-pill" id="header-asof">—</span>
       <span class="status-pill" id="offline-status" title="The app shell is cached after the first load">
         <span class="status-dot"></span><span>Local-first</span>
       </span>
@@ -53,26 +49,83 @@
     </div>
   </header>
 
-  <main id="main" class="app-main">
+  <div class="app-shell">
+    <aside class="sidebar">
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <p class="nav-label">Intelligence</p>
+        <button class="tab is-active" role="tab" aria-selected="true" id="nav-dashboard" aria-controls="tab-dashboard" data-tab="dashboard">
+          <span class="nav-icon" aria-hidden="true">◫</span><span>Dashboard</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-research" aria-controls="tab-research" data-tab="research">
+          <span class="nav-icon" aria-hidden="true">◎</span><span>Research</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-forecast" aria-controls="tab-forecast" data-tab="forecast">
+          <span class="nav-icon" aria-hidden="true">◇</span><span>Forecast</span>
+        </button>
+
+        <p class="nav-label">Workbench</p>
+        <button class="tab" role="tab" aria-selected="false" id="nav-backtest" aria-controls="tab-backtest" data-tab="backtest">
+          <span class="nav-icon" aria-hidden="true">↺</span><span>Backtest</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-optimize" aria-controls="tab-optimize" data-tab="optimize">
+          <span class="nav-icon" aria-hidden="true">▦</span><span>Optimize</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-risk" aria-controls="tab-risk" data-tab="risk">
+          <span class="nav-icon" aria-hidden="true">◈</span><span>Risk lab</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-screener" aria-controls="tab-screener" data-tab="screener">
+          <span class="nav-icon" aria-hidden="true">⌕</span><span>Screener</span>
+        </button>
+
+        <p class="nav-label">Portfolio</p>
+        <button class="tab" role="tab" aria-selected="false" id="nav-portfolio" aria-controls="tab-portfolio" data-tab="portfolio">
+          <span class="nav-icon" aria-hidden="true">▣</span><span>Ledger &amp; tax</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-alerts" aria-controls="tab-alerts" data-tab="alerts">
+          <span class="nav-icon" aria-hidden="true">◔</span><span>Alerts</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-platform" aria-controls="tab-platform" data-tab="platform">
+          <span class="nav-icon" aria-hidden="true">▤</span><span>Platform</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-card">
+        <div class="sidebar-card-head">
+          <span class="status-dot"></span>
+          <strong>Data foundation</strong>
+        </div>
+        <p>26 assets · 3 years of OHLCV · fundamentals, macro and sentiment lines.</p>
+        <div class="sidebar-metric"><span>Rows loaded</span><strong id="sidebar-rows">—</strong></div>
+        <div class="sidebar-metric"><span>Last close</span><strong id="sidebar-close">—</strong></div>
+        <button class="button ghost small full" data-goto="research">Inspect data quality</button>
+      </div>
+    </aside>
+
+    <div class="content">
+      <div class="ticker-strip" id="ticker-strip" aria-label="Market snapshot"></div>
+
+      <main id="main" class="app-main">
     <!-- Dashboard -->
-    <section class="tab-panel is-active" id="tab-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
+    <section class="tab-panel is-active" id="tab-dashboard" role="tabpanel" aria-labelledby="nav-dashboard">
       <div class="hero">
         <div>
           <p class="eyebrow">Multi-asset analytics · local-first</p>
           <h1>Understand the portfolio before the market moves.</h1>
           <p class="lede">
-            Backtests, risk decomposition, constrained optimization, screening and tax-lot analysis
-            in one installable app. Every calculation runs on your device — Android, iPhone, tablet,
-            laptop or desktop — and keeps working offline.
+            Research, probabilistic forecasts, backtests, risk decomposition, constrained
+            optimization, screening and tax-lot analysis in one installable app. Every
+            calculation runs on your device — Android, iPhone, tablet, laptop or desktop —
+            and keeps working offline.
           </p>
           <div class="hero-actions">
-            <button class="button primary" data-goto="backtest">Run a backtest</button>
-            <button class="button ghost" data-goto="risk">Open the risk lab</button>
+            <button class="button primary" data-goto="forecast">Open forecast studio</button>
+            <button class="button ghost" data-goto="research">Research an asset</button>
+            <button class="button ghost" data-goto="backtest">Run a backtest</button>
           </div>
         </div>
         <div class="hero-note">
-          <strong>No account. No server. No tracking.</strong>
-          <span>Deterministic demo market data is generated in the browser. Replace it with a live provider when you are ready.</span>
+          <strong>26 assets · 3 years · 20 model features</strong>
+          <span>Prices, fundamentals, macro and sentiment are generated deterministically in the browser. Replace the provider when you are ready for live data.</span>
         </div>
       </div>
 
@@ -90,7 +143,7 @@
           <div class="table-wrap">
             <table class="data-table" id="market-table">
               <thead>
-                <tr><th scope="col">Symbol</th><th scope="col">Price</th><th scope="col">Day</th><th scope="col">RSI</th><th scope="col">Trend</th></tr>
+                <tr><th scope="col">Symbol</th><th scope="col">Price</th><th scope="col">Day</th><th scope="col">RSI</th><th scope="col">Mkt cap</th><th scope="col">Sentiment</th><th scope="col">Trend</th></tr>
               </thead>
               <tbody></tbody>
             </table>
@@ -134,8 +187,200 @@
       </article>
     </section>
 
+    <!-- Research -->
+    <section class="tab-panel" id="tab-research" role="tabpanel" aria-labelledby="nav-research" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Asset intelligence</p>
+          <h1>Research terminal</h1>
+          <p class="lede">One view for price action, multi-horizon performance, relative strength, fundamentals, macro context, correlation and sentiment — every line computed locally.</p>
+        </div>
+        <div class="section-actions">
+          <label class="field compact">
+            <span>Research asset</span>
+            <select id="research-symbol"></select>
+          </label>
+          <button class="button ghost" id="research-export">Export snapshot</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="research-stats"></div>
+
+      <article class="card">
+        <div class="card-head"><div><h2>Multi-horizon scorecard</h2><p class="muted">Absolute return and excess return versus the S&amp;P 500</p></div><span class="pill" id="research-horizon-pill">—</span></div>
+        <div class="horizon-grid" id="research-horizons"></div>
+      </article>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Relative strength</h2><p class="muted">Asset vs S&amp;P 500, rebased to 100 · 1 year</p></div>
+            <span class="pill" id="research-rs-pill">—</span>
+          </div>
+          <div class="chart-wrap"><canvas id="research-relative-canvas" role="img" aria-label="Relative strength versus the S&P 500"></canvas></div>
+        </article>
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Drawdown profile</h2><p class="muted">Peak-to-trough decline · 2 years</p></div>
+            <span class="pill bad" id="research-dd-pill">—</span>
+          </div>
+          <div class="chart-wrap"><canvas id="research-drawdown-canvas" role="img" aria-label="Drawdown profile"></canvas></div>
+        </article>
+      </div>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><h2>Fundamental lines</h2><p class="muted" id="research-fund-note">—</p></div><span class="pill" id="research-rating">—</span></div>
+          <div class="table-wrap">
+            <table class="data-table" id="research-fundamentals">
+              <thead><tr><th scope="col">Metric</th><th scope="col">Value</th><th scope="col">Metric</th><th scope="col">Value</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><h2>Macro backdrop</h2><p class="muted">Rates, inflation, volatility and liquidity</p></div><span class="pill" id="research-macro-regime">—</span></div>
+          <div class="macro-grid" id="research-macro"></div>
+        </article>
+      </div>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><h2>Correlation matrix</h2><p class="muted">Daily returns · 1 year · cross-asset dependence</p></div></div>
+          <div class="table-wrap heatmap-wrap">
+            <table class="data-table heatmap" id="research-correlation">
+              <thead></thead><tbody></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><h2>News &amp; sentiment</h2><p class="muted" id="research-news-note">—</p></div><span class="pill" id="research-sentiment">—</span></div>
+          <div class="list" id="research-news"></div>
+        </article>
+      </div>
+
+      <article class="card">
+        <div class="card-head"><div><h2>Data quality &amp; coverage</h2><p class="muted">Local synthetic feed · audit before trusting any model output</p></div><span class="pill good">Verified locally</span></div>
+        <div class="quality-grid" id="research-quality"></div>
+      </article>
+    </section>
+
+    <!-- Forecast -->
+    <section class="tab-panel" id="tab-forecast" role="tabpanel" aria-labelledby="nav-forecast" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Predictive intelligence</p>
+          <h1>Forecast studio</h1>
+          <p class="lede">A transparent ensemble of drift, trend and ridge-factor models, stress-tested with walk-forward holdouts. Intervals — not certainties — are the primary output.</p>
+        </div>
+        <div class="section-actions">
+          <span class="pill" id="fc-readiness">Ready</span>
+          <button class="button primary" type="submit" form="forecast-form">Run forecast</button>
+        </div>
+      </div>
+
+      <form class="card form-grid" id="forecast-form">
+        <label class="field">
+          <span>Asset</span>
+          <select id="fc-symbol"></select>
+        </label>
+        <label class="field">
+          <span>Horizon (trading days)</span>
+          <input id="fc-horizon" type="number" min="5" max="126" step="1" value="21" inputmode="numeric">
+        </label>
+        <label class="field">
+          <span>Model</span>
+          <select id="fc-mode">
+            <option value="ensemble">Ensemble · walk-forward weighted</option>
+            <option value="factor">Ridge factor model</option>
+            <option value="holt">Holt trend</option>
+            <option value="drift">Drift + volatility</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Monte Carlo paths</span>
+          <input id="fc-sims" type="number" min="200" max="5000" step="100" value="2000" inputmode="numeric">
+        </label>
+        <label class="field">
+          <span>Seed</span>
+          <input id="fc-seed" type="number" min="0" max="999999" step="1" value="7" inputmode="numeric">
+        </label>
+        <label class="field">
+          <span>History window</span>
+          <select id="fc-history">
+            <option value="120">120 bars</option>
+            <option value="180" selected>180 bars</option>
+            <option value="252">252 bars</option>
+          </select>
+        </label>
+        <div class="form-actions">
+          <button class="button primary" type="submit">Run forecast</button>
+          <span class="muted small" id="fc-hint">Includes walk-forward accuracy, feature attribution and data coverage.</span>
+        </div>
+      </form>
+
+      <div id="forecast-results" hidden>
+        <div class="stat-grid" id="fc-stats"></div>
+
+        <article class="card forecast-card">
+          <div class="card-head">
+            <div>
+              <h2 id="fc-chart-title">Forecast cone</h2>
+              <p class="muted" id="fc-chart-subtitle">Median path with 50 / 80 / 95% simulation intervals</p>
+            </div>
+            <div class="forecast-legend" id="fc-band-legend"></div>
+          </div>
+          <div class="chart-wrap chart-tall">
+            <canvas id="fc-chart" role="img" aria-label="Forecast median with confidence bands"></canvas>
+          </div>
+        </article>
+
+        <div class="grid three">
+          <article class="card">
+            <div class="card-head"><div><h2>Market regime</h2><p class="muted">Trend, volatility and drawdown state</p></div></div>
+            <div id="fc-regime"></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Scenario matrix</h2><p class="muted">Bear / base / bull terminal prices</p></div></div>
+            <div id="fc-scenarios" class="scenario-list"></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Terminal distribution</h2><p class="muted">Monte Carlo density at horizon</p></div></div>
+            <div class="chart-wrap"><canvas id="fc-distribution" role="img" aria-label="Terminal price distribution histogram"></canvas></div>
+          </article>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head"><div><h2>Model ensemble</h2><p class="muted">Out-of-sample error drives each weight</p></div></div>
+            <div id="fc-models" class="model-list"></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Walk-forward diagnostics</h2><p class="muted">Honest holdout metrics, not in-sample fit</p></div><span class="pill" id="fc-skill">—</span></div>
+            <div id="fc-diagnostics" class="metric-grid"></div>
+          </article>
+        </div>
+
+        <div class="grid two">
+          <article class="card">
+            <div class="card-head"><div><h2>Feature attribution</h2><p class="muted">Largest standardised contributions to the factor signal</p></div></div>
+            <div id="fc-features" class="bar-list"></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Data foundation</h2><p class="muted">Coverage behind this forecast</p></div><span class="pill" id="fc-data-pill">—</span></div>
+            <div id="fc-data" class="metric-grid"></div>
+          </article>
+        </div>
+
+        <article class="card disclaimer">
+          <h2>How to read this</h2>
+          <p>Forecasts are probability distributions, not price targets. The ensemble combines three simple models and reports its own walk-forward error. Synthetic demo data understates real-world regime breaks, gaps and survivorship bias. Nothing here is investment advice.</p>
+        </article>
+      </div>
+    </section>
+
     <!-- Backtest -->
-    <section class="tab-panel" id="tab-backtest" role="tabpanel" aria-labelledby="tab-backtest" hidden>
+    <section class="tab-panel" id="tab-backtest" role="tabpanel" aria-labelledby="nav-backtest" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Research</p>
@@ -201,7 +446,7 @@
     </section>
 
     <!-- Optimize -->
-    <section class="tab-panel" id="tab-optimize" role="tabpanel" aria-labelledby="tab-optimize" hidden>
+    <section class="tab-panel" id="tab-optimize" role="tabpanel" aria-labelledby="nav-optimize" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Allocation</p>
@@ -264,7 +509,7 @@
     </section>
 
     <!-- Risk -->
-    <section class="tab-panel" id="tab-risk" role="tabpanel" aria-labelledby="tab-risk" hidden>
+    <section class="tab-panel" id="tab-risk" role="tabpanel" aria-labelledby="nav-risk" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Risk lab</p>
@@ -325,7 +570,7 @@
     </section>
 
     <!-- Screener -->
-    <section class="tab-panel" id="tab-screener" role="tabpanel" aria-labelledby="tab-screener" hidden>
+    <section class="tab-panel" id="tab-screener" role="tabpanel" aria-labelledby="nav-screener" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Discovery</p>
@@ -378,7 +623,7 @@
     </section>
 
     <!-- Portfolio -->
-    <section class="tab-panel" id="tab-portfolio" role="tabpanel" aria-labelledby="tab-portfolio" hidden>
+    <section class="tab-panel" id="tab-portfolio" role="tabpanel" aria-labelledby="nav-portfolio" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Ledger</p>
@@ -437,7 +682,7 @@
     </section>
 
     <!-- Alerts -->
-    <section class="tab-panel" id="tab-alerts" role="tabpanel" aria-labelledby="tab-alerts" hidden>
+    <section class="tab-panel" id="tab-alerts" role="tabpanel" aria-labelledby="nav-alerts" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Monitoring</p>
@@ -471,7 +716,7 @@
     </section>
 
     <!-- Platform -->
-    <section class="tab-panel" id="tab-platform" role="tabpanel" aria-labelledby="tab-platform" hidden>
+    <section class="tab-panel" id="tab-platform" role="tabpanel" aria-labelledby="nav-platform" hidden>
       <div class="section-head">
         <div>
           <p class="eyebrow">Platform</p>
@@ -505,7 +750,7 @@
             <li><strong>Storage:</strong> <code>localStorage</code> for portfolio, alerts and theme. Clearing site data resets it.</li>
             <li><strong>Offline:</strong> a service worker caches the app shell and all modules.</li>
             <li><strong>Charts:</strong> canvas, no charting dependency.</li>
-            <li><strong>Data:</strong> deterministic synthetic candles seeded by symbol. Swap in a provider in <code>js/core/marketdata.js</code>.</li>
+            <li><strong>Data:</strong> 26 deterministic synthetic assets with OHLCV, fundamentals, macro and sentiment. Swap in a provider in <code>js/core/marketdata.js</code>.</li>
           </ul>
           <h2>Architecture</h2>
           <p class="muted">
@@ -526,12 +771,38 @@
         </p>
       </article>
     </section>
-  </main>
+      </main>
 
-  <footer class="app-footer">
-    <span>InvestorKit · local-first portfolio analytics</span>
-    <span>Educational use only · not investment advice</span>
-  </footer>
+      <footer class="app-footer">
+        <span>InvestorKit Pro · local-first portfolio intelligence</span>
+        <span>Educational use only · not investment advice</span>
+      </footer>
+    </div>
+  </div>
+
+  <nav class="mobile-nav" aria-label="Primary navigation">
+    <button class="tab" data-tab="dashboard" aria-label="Dashboard"><span aria-hidden="true">◫</span><small>Home</small></button>
+    <button class="tab" data-tab="research" aria-label="Research"><span aria-hidden="true">◎</span><small>Research</small></button>
+    <button class="tab" data-tab="forecast" aria-label="Forecast"><span aria-hidden="true">◇</span><small>Forecast</small></button>
+    <button class="tab" data-tab="portfolio" aria-label="Portfolio"><span aria-hidden="true">▣</span><small>Portfolio</small></button>
+    <button class="tab" id="mobile-more" data-command="open" aria-label="More sections"><span aria-hidden="true">⋯</span><small>More</small></button>
+  </nav>
+
+  <dialog id="command-palette" class="command-palette" aria-label="Command palette">
+    <div class="command-box">
+      <div class="command-search">
+        <span aria-hidden="true">⌕</span>
+        <input id="command-input" type="search" placeholder="Jump to a page or asset…" autocomplete="off" spellcheck="false">
+        <kbd>Esc</kbd>
+      </div>
+      <div id="command-results" class="command-results" role="listbox"></div>
+      <div class="command-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> open</span>
+        <span><kbd>⌘K</kbd> toggle</span>
+      </div>
+    </div>
+  </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 

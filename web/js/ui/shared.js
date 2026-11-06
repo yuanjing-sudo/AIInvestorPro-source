@@ -6,9 +6,13 @@ import { CanvasChart } from './charts.js';
 
 export { UNIVERSE };
 
-export const market = marketSnapshot(504);
+export const market = marketSnapshot(756);
 export const quotes = market.quotes;
 export const candleMap = market.candleMap;
+export const fundamentals = market.fundamentals;
+export const news = market.news;
+export const quality = market.quality;
+export const macro = market.macro;
 export const assetsBySymbol = Object.fromEntries(UNIVERSE.map((asset) => [asset.symbol, asset]));
 export const returnsBySymbol = Object.fromEntries(
   UNIVERSE.map((asset) => [asset.symbol, returnsFromCandles(candleMap[asset.symbol])]),
@@ -91,6 +95,16 @@ export const state = {
     stress: null,
   },
   backtest: { symbol: 'SPY', strategy: 'smaCross', result: null },
+  forecast: {
+    symbol: 'SPY',
+    horizon: 21,
+    mode: 'ensemble',
+    simulations: 2000,
+    seed: 7,
+    history: 180,
+    result: null,
+  },
+  research: { symbol: 'SPY' },
   screener: {
     filters: {
       sectors: [], minPrice: 0, maxPrice: Infinity, minAvgVolume: 0,
@@ -199,6 +213,21 @@ export function formatMoneyCompact(value) {
 export function formatPercent(value, digits = 2) {
   if (!Number.isFinite(value)) return '—';
   return `${(value * 100).toFixed(digits)}%`;
+}
+
+export function formatSignedPercent(value, digits = 2) {
+  if (!Number.isFinite(value)) return '—';
+  return `${value >= 0 ? '+' : '−'}${(Math.abs(value) * 100).toFixed(digits)}%`;
+}
+
+export function formatCompact(value, digits = 1) {
+  if (!Number.isFinite(value)) return '—';
+  const abs = Math.abs(value);
+  if (abs >= 1e12) return `${(value / 1e12).toFixed(digits)}T`;
+  if (abs >= 1e9) return `${(value / 1e9).toFixed(digits)}B`;
+  if (abs >= 1e6) return `${(value / 1e6).toFixed(digits)}M`;
+  if (abs >= 1e3) return `${(value / 1e3).toFixed(digits)}K`;
+  return value.toFixed(0);
 }
 
 export function formatNumber(value, digits = 2) {
