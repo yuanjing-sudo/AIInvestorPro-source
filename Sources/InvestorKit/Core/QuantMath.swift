@@ -185,7 +185,7 @@ public enum QuantMath {
         let n = values.count
         guard n > 0 else { return [] }
         let upper = max(maxWeight, 1.0 / Double(n))
-        guard n * upper >= 1 else { return Array(repeating: 1.0 / Double(n), count: n) }
+        guard Double(n) * upper >= 1 else { return Array(repeating: 1.0 / Double(n), count: n) }
 
         // Find tau such that sum(clamp(v_i - tau, 0, upper)) == 1. The sum is
         // monotonically decreasing in tau, so bisection is sufficient.

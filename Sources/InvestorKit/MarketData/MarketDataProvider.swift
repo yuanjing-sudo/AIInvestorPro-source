@@ -277,7 +277,7 @@ public actor YahooFinanceProvider: MarketDataProvider {
         for attempt in 0..<maxRetries {
             do {
                 try await throttle()
-                let (data, response) = try await session.data(from: url)
+                let (data, response) = try await fetch(url)
                 guard let http = response as? HTTPURLResponse else {
                     throw MarketDataError.network("non-HTTP response")
                 }
@@ -308,6 +308,26 @@ public actor YahooFinanceProvider: MarketDataProvider {
             }
         }
         throw lastError
+    }
+
+    /// `URLSession.data(from:)` is unavailable on Linux. Bridge the
+    /// completion-handler API so the same provider compiles on every platform.
+    private func fetch(_ url: URL) async throws -> (Data, URLResponse) {
+        #if canImport(FoundationNetworking)
+        return try await withCheckedThrowingContinuation { continuation in
+            session.dataTask(with: url) { data, response, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data, let response {
+                    continuation.resume(returning: (data, response))
+                } else {
+                    continuation.resume(throwing: MarketDataError.network("empty response"))
+                }
+            }.resume()
+        }
+        #else
+        return try await session.data(from: url)
+        #endif
     }
 
     private func throttle() async throws {

@@ -114,7 +114,7 @@ public struct TechnicalIndicators: Sendable, Equatable {
             bollingerMiddle: bollinger.middle,
             stochasticK: stochastic.k,
             stochasticD: stochastic.d,
-            williamsR: williams.value,
+            williamsR: williams,
             atr: atr,
             momentum: momentum
         )
@@ -226,14 +226,14 @@ public struct TechnicalIndicators: Sendable, Equatable {
         lows: [Double],
         close: [Double],
         period: Int
-    ) -> (value: Double) {
-        guard period > 0, close.count >= period else { return (value: -50) }
+    ) -> Double {
+        guard period > 0, close.count >= period else { return -50 }
         let start = close.count - period
         let high = highs[start...].max() ?? close.last ?? 0
         let low = lows[start...].min() ?? close.last ?? 0
         let current = close.last ?? 0
-        guard high > low else { return (value: -50) }
-        return (value: -(high - current) / (high - low) * 100)
+        guard high > low else { return -50 }
+        return -(high - current) / (high - low) * 100
     }
 
     /// Wilder ATR over the last `period` true ranges.

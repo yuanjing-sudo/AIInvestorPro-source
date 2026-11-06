@@ -137,7 +137,7 @@ public extension Array where Element == Double {
         guard count > 1 else { return 0 }
         let average = mean
         let variance = reduce(0) { $0 + pow($1 - average, 2) } / Double(count - 1)
-        return sqrt(max(0, variance))
+        return sqrt(Swift.max(0, variance))
     }
 
     var absoluteValue: [Double] {

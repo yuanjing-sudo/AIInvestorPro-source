@@ -7,7 +7,9 @@ public struct AIInvestorProApp: App {
     @StateObject private var portfolio = Portfolio()
     @StateObject private var alertStore = AlertStore()
     @State private var selectedTab = 0
-    
+
+    public init() {}
+
     // MARK: - Body
     public var body: some Scene {
         WindowGroup {
