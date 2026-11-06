@@ -74,7 +74,7 @@ dependency-free, installable PWA in [`web/`](web/README.md).
 cd web
 node server.mjs          # http://localhost:8080/
 npm install              # only for the JSDOM smoke test
-npm test                 # 82 numerical/unit tests
+npm test                 # 100 numerical/unit tests
 npm run test:ui          # drives every tab in a DOM
 npm run test:all
 ```
@@ -93,7 +93,12 @@ https://yuanjing-sudo.github.io/AIInvestorPro-source/
 
 Features: dashboard, price/chart indicators, 9-strategy backtester, constrained portfolio
 optimizer with efficient frontier, correlated Monte Carlo risk lab, screener, portfolio
-ledger with FIFO/LIFO/HIFO/LOFO tax-lot comparison, and price/RSI/volume alerts.
+ledger with FIFO/LIFO/HIFO/LOFO tax-lot comparison, price/RSI/volume alerts, a research
+terminal (multi-horizon scorecard, relative strength, fundamentals, macro, correlation,
+sentiment and data-quality audit) and a forecast studio (drift/Holt/ridge ensemble,
+50/80/95% simulation cones, scenario matrix, walk-forward diagnostics and feature
+attribution). A command palette, market ribbon, responsive sidebar and mobile navigation
+make the same build usable on phones, tablets and desktops.
 
 ### Layout
 
@@ -104,8 +109,7 @@ Sources/InvestorKitDemo/   Runnable command-line demo
 Tests/InvestorKitTests/    XCTest coverage for indicators, analytics, risk, trading,
                            screener, persistence, and export
 web/                       Installable cross-platform PWA and its tests
-docs/AUDIT.md              Prioritized audit and remediation record
-.github/workflows/         Swift CI and GitHub Pages deployment
+docs/AUDIT.md              Prioritized audit and remediation record.github/workflows/         Swift CI and GitHub Pages deployment
 ```
 
 ## Using the library

@@ -1,15 +1,15 @@
 {
-  "name": "InvestorKit — Portfolio Analytics",
+  "name": "InvestorKit Pro — Portfolio Intelligence",
   "short_name": "InvestorKit",
-  "description": "Multi-asset portfolio analytics, backtesting, risk and screening that runs on any device and works offline.",
+  "description": "Multi-asset research, forecasting, backtesting, risk and portfolio analytics that run on any device and work offline.",
   "id": "investor-kit",
   "start_url": ".",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "any",
-  "background_color": "#070b12",
-  "theme_color": "#0b1220",
+  "background_color": "#05080f",
+  "theme_color": "#05080f",
   "categories": ["finance", "productivity", "utilities"],
   "icons": [
     {

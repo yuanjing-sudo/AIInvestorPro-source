@@ -2,13 +2,14 @@
 
 import {
   UNIVERSE, quotes, candleMap, indicators, returnsBySymbol, assetsBySymbol,
-  state, $, escapeHtml, dateLabel, formatMoney, formatMoneyCompact,
-  formatPercent, formatNumber, formatSignedMoney, signClass, makeChart,
+  fundamentals, news, state, $, escapeHtml, dateLabel, formatMoney, formatMoneyCompact,
+  formatPercent, formatNumber, formatCompact, formatSignedMoney, signClass, makeChart,
   statCard, aggregatePortfolio, fillSymbolSelect,
 } from './shared.js';
 import { sma } from '../core/indicators.js';
 import { analyzeReturns } from '../core/analytics.js';
 import { portfolioSignals } from '../core/screener.js';
+import { sentimentSummary } from '../core/marketdata.js';
 
 let assetChart = null;
 
@@ -63,11 +64,15 @@ function renderMarketTable() {
       ? ind.sma20 > ind.sma50
       : false;
     const change = quote.changePercent;
+    const cap = fundamentals[asset.symbol]?.marketCap;
+    const sentiment = sentimentSummary(news[asset.symbol] ?? []);
     return `<tr class="clickable ${state.symbol === asset.symbol ? 'is-selected' : ''}" data-symbol="${asset.symbol}">
       <td><span class="symbol">${asset.symbol}</span><span class="sub">${escapeHtml(asset.name)}</span></td>
       <td class="num">${formatMoney(quote.price, 2)}</td>
       <td class="num ${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '+' : ''}${change.toFixed(2)}%</td>
       <td class="num">${Number.isFinite(ind?.rsi) ? ind.rsi.toFixed(1) : '—'}</td>
+      <td class="num">${Number.isFinite(cap) ? `$${formatCompact(cap)}` : '—'}</td>
+      <td><span class="pill ${sentiment.score > 0.2 ? 'good' : sentiment.score < -0.2 ? 'bad' : ''}">${sentiment.label}</span></td>
       <td><span class="pill ${trend ? 'good' : 'bad'}">${trend ? 'Up' : 'Down'}</span></td>
     </tr>`;
   }).join('');
@@ -115,6 +120,9 @@ function renderAsset() {
   const atrPercent = quote.price > 0 ? (ind.atr ?? 0) / quote.price : 0;
   const macdHistogram = (ind.macd ?? 0) - (ind.macdSignal ?? 0);
   const vol60 = analyzeReturns(returnsBySymbol[symbol].slice(-60)).volatility;
+  const oneYear = analyzeReturns(returnsBySymbol[symbol].slice(-252)).totalReturn;
+  const fund = fundamentals[symbol];
+  const tone = sentimentSummary(news[symbol] ?? []);
   const mini = (label, value) => `<div class="mini-stat"><span>${label}</span><strong>${value}</strong></div>`;
 
   $('#asset-stats').innerHTML = [
@@ -126,6 +134,10 @@ function renderAsset() {
     mini('52w low', formatMoney(low52, 2)),
     mini('60d vol', formatPercent(vol60, 1)),
     mini('Avg volume', formatNumber(ind.meanVolume ?? 0, 0)),
+    mini('1Y return', formatPercent(oneYear, 1)),
+    mini('Beta', Number.isFinite(fund?.beta) ? fund.beta.toFixed(2) : '—'),
+    mini('Analyst target', Number.isFinite(fund?.analystTarget) ? formatMoney(fund.analystTarget, 2) : '—'),
+    mini('News tone', tone.label),
   ].join('');
 }
 

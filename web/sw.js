@@ -1,5 +1,5 @@
 /* InvestorKit service worker: offline-first for the app shell and analytics. */
-const CACHE = 'investor-kit-v2';
+const CACHE = 'investor-kit-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -19,9 +19,12 @@ const ASSETS = [
   './js/core/screener.js',
   './js/core/taxlots.js',
   './js/core/alerts.js',
+  './js/core/forecast.js',
   './js/ui/charts.js',
   './js/ui/shared.js',
   './js/ui/dashboard.js',
+  './js/ui/research-view.js',
+  './js/ui/forecast-view.js',
   './js/ui/backtest-view.js',
   './js/ui/optimize-view.js',
   './js/ui/risk-view.js',
