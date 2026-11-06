@@ -1,23 +1,15 @@
 // MARK: - Risk Management
 import Foundation
 
-public struct RiskLimits {
-    /// Maximum position size as percentage of portfolio
+public struct RiskLimits: Sendable {
     public var maxPositionSizePct: Double = 2.0
-    /// Maximum daily loss as percentage of portfolio
     public var maxDailyLossPct: Double = 5.0
-    /// Maximum drawdown as percentage of portfolio
     public var maxDrawdownPct: Double = 15.0
-    /// Maximum leverage allowed
     public var maxLeverage: Double = 3.0
-    /// Maximum concurrent open positions
     public var maxConcurrentTrades: Int = 10
-    /// Maximum correlation between positions
     public var maxPositionCorrelation: Double = 0.7
-    
-    /// Risk per trade as percentage of portfolio
     public var riskPerTradePct: Double = 1.0
-    
+
     public init(
         maxPositionSizePct: Double = 2.0,
         maxDailyLossPct: Double = 5.0,
@@ -37,9 +29,8 @@ public struct RiskLimits {
     }
 }
 
-
 // MARK: - Order
-public struct Order {
+public struct Order: Identifiable, Sendable {
     public let id: String
     public let side: OrderSide
     public let type: OrderType
@@ -47,12 +38,13 @@ public struct Order {
     public let quantity: Double
     public let price: Double?
     public let stopPrice: Double?
+    public let duration: OrderDuration
     public let timestamp: Date
     public var status: OrderStatus
     public var filledQuantity: Double
-    public let filledPrice: Double?
-    public let commission: Double
-    
+    public var filledPrice: Double?
+    public var commission: Double
+
     public init(
         id: String = UUID().uuidString,
         side: OrderSide,
@@ -60,7 +52,8 @@ public struct Order {
         symbol: String,
         quantity: Double,
         price: Double? = nil,
-        stopPrice: Double? = nil
+        stopPrice: Double? = nil,
+        duration: OrderDuration = .day
     ) {
         self.id = id
         self.side = side
@@ -69,6 +62,7 @@ public struct Order {
         self.quantity = quantity
         self.price = price
         self.stopPrice = stopPrice
+        self.duration = duration
         self.status = .pending
         self.filledQuantity = 0
         self.filledPrice = nil
@@ -77,8 +71,7 @@ public struct Order {
     }
 }
 
-// MARK: - Order Type
-public enum OrderType: String, CaseIterable {
+public enum OrderType: String, CaseIterable, Sendable, Equatable {
     case market
     case limit
     case stop
@@ -86,8 +79,7 @@ public enum OrderType: String, CaseIterable {
     case trailingStop
 }
 
-// MARK: - Order Status
-public enum OrderStatus: String, CaseIterable {
+public enum OrderStatus: String, CaseIterable, Sendable, Equatable {
     case pending
     case pendingNew
     case partialFilled
@@ -98,151 +90,152 @@ public enum OrderStatus: String, CaseIterable {
 }
 
 // MARK: - Trade
-public struct Trade {
+public struct Trade: Sendable {
     public let order: Order
     public let filledQuantity: Double
     public let filledPrice: Double
     public let commission: Double
     public let timestamp: Date
-    
-    public var netCost: Double {
-        filledQuantity * filledPrice + commission
+
+    public init(
+        order: Order,
+        filledQuantity: Double,
+        filledPrice: Double,
+        commission: Double = 0,
+        timestamp: Date = Date()
+    ) {
+        self.order = order
+        self.filledQuantity = filledQuantity
+        self.filledPrice = filledPrice
+        self.commission = commission
+        self.timestamp = timestamp
     }
-    
+
+    public var netCost: Double {
+        let sign = order.side == .buy ? 1.0 : -1.0
+        return filledQuantity * filledPrice * sign + commission
+    }
+
     public var pnl: Double {
-        // Profit and loss calculation
-        // (filledPrice - entryPrice) * filledQuantity - commission
-        // This would need entryPrice from the original order
-        return 0.0
+        guard let entry = order.price, entry > 0 else { return 0 }
+        let direction = order.side == .buy ? 1.0 : -1.0
+        return (filledPrice - entry) * filledQuantity * direction - commission
     }
 }
 
-// MARK: - RiskManager
-public class RiskManager {
-    private let limits: RiskLimits
-    private var dailyPnL: Double = 0.0
-    private var dailyPnLResetDate: Date = Date()
-    private var openPositions: [String: Position] = [:]
-    private var tradeHistory: [Trade] = []
-    private var correlationMatrix: [[Double]] = [:][]
-    
-    public init(limits: RiskLimits = RiskLimits()) {
-        self.limits = limits
-    }
-    
-    // MARK: - Position
-    public struct Position {
+// MARK: - Risk Manager
+public final class RiskManager {
+    public struct Position: Identifiable, Sendable {
+        public let id: String
         public let symbol: String
         public let side: OrderSide
         public let quantity: Double
         public let entryPrice: Double
-        public let currentPrice: Double
+        public var currentPrice: Double
         public let stopPrice: Double?
         public let takeProfit: Double?
         public var unrealizedPnL: Double
         public var realizedPnL: Double
         public var marginUsed: Double
-        public var tradeId: String
-        
-        var pnlPercentage: Double {
+
+        public var pnlPercentage: Double {
             guard entryPrice > 0 else { return 0 }
             return (currentPrice - entryPrice) / entryPrice * 100.0 * (side == .buy ? 1 : -1)
         }
-    }
-    
-    public init(
-        symbol: String,
-        side: OrderSide,
-        quantity: Double,
-        entryPrice: Double,
-        currentPrice: Double,
-        stopPrice: Double? = nil,
-        takeProfit: Double? = nil,
-        tradeId: String = UUID().uuidString
-    ) {
-        self.symbol = symbol
-        self.side = side
-        self.quantity = quantity
-        self.entryPrice = entryPrice
-        self.currentPrice = currentPrice
-        self.stopPrice = stopPrice
-        self.takeProfit = takeProfit
-        self.unrealizedPnL = 0.0
-        self.realizedPnL = 0.0
-        self.marginUsed = 0.0
-        self.tradeId = tradeId
-    }
-}
 
-// MARK: - Risk Assessment
-public extension RiskManager {
-    /// Check if a new trade can be entered given current risk state
-    /// - Parameters:
-    ///   - symbol: Trading symbol
-    ///   - quantity: Trade quantity
-    ///   - entryPrice: Expected entry price
-    ///   - side: Order side (buy/sell)
-    /// - Returns: (allowed: Bool, reason: String?, positionSize: Double?)
-    func canEnterTrade(
+        public init(
+            id: String = UUID().uuidString,
+            symbol: String,
+            side: OrderSide,
+            quantity: Double,
+            entryPrice: Double,
+            currentPrice: Double,
+            stopPrice: Double? = nil,
+            takeProfit: Double? = nil,
+            unrealizedPnL: Double = 0,
+            realizedPnL: Double = 0,
+            marginUsed: Double = 0
+        ) {
+            self.id = id
+            self.symbol = symbol
+            self.side = side
+            self.quantity = quantity
+            self.entryPrice = entryPrice
+            self.currentPrice = currentPrice
+            self.stopPrice = stopPrice
+            self.takeProfit = takeProfit
+            self.unrealizedPnL = unrealizedPnL
+            self.realizedPnL = realizedPnL
+            self.marginUsed = marginUsed
+        }
+    }
+
+    private let limits: RiskLimits
+    private var dailyPnL: Double = 0.0
+    private var dailyPnLResetDate: Date = Date()
+    private var openPositions: [String: Position] = [:]
+    private var tradeHistory: [Trade] = []
+
+    public init(limits: RiskLimits = RiskLimits()) {
+        self.limits = limits
+    }
+
+    /// Check if a new trade can be entered.
+    public func canEnterTrade(
         symbol: String,
         quantity: Double,
         entryPrice: Double,
-        side: OrderSide
+        side: OrderSide,
+        stopPrice: Double? = nil,
+        portfolioValue: Double = 100_000
     ) -> (allowed: Bool, reason: String?, positionSize: Double?) {
-        // 1. Check position size limit
-        let maxPositionValue = limits.maxPositionSizePct / 100.0 * 10000.0 // Assuming $100k portfolio
+        let maxPositionValue = limits.maxPositionSizePct / 100.0 * portfolioValue
         let positionValue = abs(quantity * entryPrice)
-        
+
         guard positionValue <= maxPositionValue else {
-            return (false, "Position size $\(String(format: "%.0f", positionValue)) exceeds max $\(String(format: "%.0f", limits.maxPositionSizePct * 1000))", nil)
+            return (false, "Position size \(currency(positionValue)) exceeds max \(currency(maxPositionValue))", nil)
         }
-        
-        // 2. Check daily loss limit
-        guard dailyPnL >= -limits.maxDailyLossPct / 100.0 * 10000.0 else {
-            return (false, "Would exceed daily loss limit of $\(String(format: "%.0f", limits.maxDailyLossPct * 10))", nil)
+
+        guard dailyPnL >= -limits.maxDailyLossPct / 100.0 * portfolioValue else {
+            return (false, "Would exceed daily loss limit of \(currency(limits.maxDailyLossPct / 100.0 * portfolioValue))", nil)
         }
-        
-        // 3. Check max concurrent trades
-        let activeCount = openPositions.filter { $0.unrealizedPnL != 0 }.count
+
+        let activeCount = openPositions.values.filter { $0.unrealizedPnL != 0 }.count
         guard activeCount < limits.maxConcurrentTrades else {
             return (false, "Maximum concurrent trades (\(limits.maxConcurrentTrades)) already open", nil)
         }
-        
-        // 4. Check drawdown limit
-        guard dailyPnL >= -limits.maxDrawdownPct / 100.0 * 10000.0 else {
-            return (false, "Would exceed max drawdown of $\(String(format: "%.0f", limits.maxDrawdownPct * 10))", nil)
+
+        guard dailyPnL >= -limits.maxDrawdownPct / 100.0 * portfolioValue else {
+            return (false, "Would exceed max drawdown of \(currency(limits.maxDrawdownPct / 100.0 * portfolioValue))", nil)
         }
-        
-        // 5. Calculate position size
-        let riskAmount = limits.riskPerTradePct / 100.0 * 10000.0 // Portfolio risk amount
-        let priceRisk = abs(entryPrice - (stopPrice ?? entryPrice * 0.95)) // Using stop as reference
+
+        let riskAmount = limits.riskPerTradePct / 100.0 * portfolioValue
+        let referenceStop = stopPrice ?? entryPrice * 0.95
+        let priceRisk = abs(entryPrice - referenceStop)
+        guard priceRisk > 0 else {
+            return (false, "Stop price must differ from entry price", nil)
+        }
         let quantityToRisk = riskAmount / priceRisk
-        let positionSize = min(quantity, quantityToRisk)
-        
+        let positionSize = min(abs(quantity), quantityToRisk) * (side == .buy ? 1 : -1)
+        _ = symbol
         return (true, nil, positionSize)
     }
-    
-    /// Record a trade and update risk state
-    /// - Parameter trade: The executed trade
-    func recordTrade(_ trade: Trade) {
+
+    public func recordTrade(_ trade: Trade) {
         dailyPnL += trade.netCost
         tradeHistory.append(trade)
-        
-        // Update position tracking
-        if let symbol = trade.order.symbol {
-            // In a full implementation, we'd track the position details
-            // For now, just record the trade
-        }
     }
-    
-    /// Get current portfolio exposure by symbol
-    func getExposure(symbol: String) -> Double {
+
+    public func getExposure(symbol: String) -> Double {
         openPositions[symbol]?.pnlPercentage ?? 0.0
     }
-    
-    /// Get maximum allowed position size in currency
-    func maxPositionValue() -> Double {
-        // Assuming $100k portfolio for calculation
-        return limits.maxPositionSizePct / 100.0 * 100000.0
+
+    public func maxPositionValue(portfolioValue: Double = 100_000) -> Double {
+        limits.maxPositionSizePct / 100.0 * portfolioValue
+    }
+
+    public func resetDailyPnL() {
+        dailyPnL = 0
+        dailyPnLResetDate = Date()
     }
 }

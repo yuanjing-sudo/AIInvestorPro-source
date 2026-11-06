@@ -2,84 +2,88 @@
 import Foundation
 
 public struct StockAnalyzer {
-    /// Analyze a snapshot and return comprehensive results
-    public func analyze(_ snapshot: MarketSnapshot, regime: Market.Regime? = nil) -> AnalysisResult {
-        let regime = regime ?? MarketRegime.detect([snapshot])
-        let indicators = TechnicalIndicators.calculate(from: snapshot.closes)
-        
-        // Calculate various metrics
-        let totalReturn = (snapshot.closes.last! / snapshot.closes.first!) - 1
-        let recentReturn = (snapshot.closes.last! / snapshot.closes[snapshot.closes.count - min(20, snapshot.closes.count)]) - 1
-        
-        // Volatility (annualized approximate)
-        let returns = zip(snapshot.closes.dropFirst(), snapshot.closes.dropLast()).map { $0 / $1 - 1 }
-        let meanReturn = returns.reduce(0, +) / Double(returns.count)
-        let variance = returns.map { pow($0 - meanReturn, 2) }.reduce(0, +) / Double(returns.count - 1)
-        let annualizedVol = sqrt(Double(252) * variance) * 100
-        
-        // Moving averages
-        let sma20 = snapshot.closes.suffix(20).reduce(0, +) / 20
-        let sma50 = snapshot.closes.count >= 50 ? snapshot.closes.suffix(50).reduce(0, +) / 50 : snapshot.cloves.last!
-        let ema12 = calculateEMA(snapshot.closes, period: 12)
-        let ema26 = calculateEMA(snapshot.closes, period: 26)
-        
-        // MACD
-        let macd = ema12 - ema26
-        let macdSignal = (snapshot.closes.last! - ema26) / ema26 * 100
-        
-        // RSI
-        let rsi = RSI.calculate(from: snapshot.closes)
-        
-        // Support/Resistance levels
-        let high52 = snapshot.closes.suffix(252).max() ?? snapshot.closes.last!
-        let low52 = snapshot.closes.suffix(252).min() ?? snapshot.closes.last!
-        
+    /// Analyze a snapshot and return comprehensive results.
+    public func analyze(_ snapshot: MarketSnapshot, regime explicitRegime: MarketRegime? = nil) -> AnalysisResult {
+        let regime = explicitRegime ?? MarketRegime.detect([snapshot]).regime
+        let indicators = TechnicalIndicators.calculate(
+            from: snapshot.closes,
+            high: snapshot.highs,
+            low: snapshot.lows,
+            volume: snapshot.volumes
+        )
+
+        guard let first = snapshot.closes.first,
+              let last = snapshot.closes.last,
+              first > 0, last > 0 else {
+            return AnalysisResult(
+                symbol: snapshot.symbol,
+                currentPrice: snapshot.currentPrice,
+                totalReturn: 0,
+                recentReturn: 0,
+                annualizedVolatility: 0,
+                sma20: 0,
+                sma50: 0,
+                ema12: 0,
+                ema26: 0,
+                macd: 0,
+                macdSignal: 0,
+                rsi: 50,
+                supportLevel: snapshot.currentPrice,
+                resistanceLevel: snapshot.currentPrice,
+                regime: regime,
+                technical: TechnicalSignal(
+                    rsi: 50,
+                    macd: 0,
+                    macdSignal: 0,
+                    aboveSMA20: false,
+                    aboveSMA50: false
+                )
+            )
+        }
+
+        let totalReturn = (last / first - 1) * 100
+        let recentCount = min(20, snapshot.closes.count)
+        let recentBase = snapshot.closes[snapshot.closes.count - recentCount]
+        let recentReturn = recentBase > 0 ? (last / recentBase - 1) * 100 : 0
+
+        let returns = zip(snapshot.closes.dropFirst(), snapshot.closes.dropLast()).map { $0.0 / $0.1 - 1 }
+        let meanReturn = returns.mean
+        let variance = returns.count > 1
+            ? returns.reduce(0) { $0 + pow($1 - meanReturn, 2) } / Double(returns.count - 1)
+            : 0
+        let annualizedVolatility = sqrt(max(0, variance * 252)) * 100
+
+        let sma20 = snapshot.closes.suffix(min(20, snapshot.closes.count)).reduce(0, +)
+            / Double(min(20, snapshot.closes.count))
+        let sma50 = snapshot.closes.suffix(min(50, snapshot.closes.count)).reduce(0, +)
+            / Double(min(50, snapshot.closes.count))
+
+        let high52 = snapshot.closes.suffix(252).max() ?? last
+        let low52 = snapshot.closes.suffix(252).min() ?? last
+
         return AnalysisResult(
             symbol: snapshot.symbol,
             currentPrice: snapshot.currentPrice,
             totalReturn: totalReturn,
             recentReturn: recentReturn,
-            annualizedVolatility: annualizedVol,
+            annualizedVolatility: annualizedVolatility,
             sma20: sma20,
             sma50: sma50,
-            ema12: ema12,
-            ema26: ema26,
-            macd: macd,
-            macdSignal: macdSignal,
-            rsi: rsi,
-            supportLevel: snapshot.low52 * 0.98, // Approximate
-            resistanceLevel: snapshot.high52 * 1.02, // Approximate
+            ema12: indicators.ema12,
+            ema26: indicators.ema26,
+            macd: indicators.macd,
+            macdSignal: indicators.macdSignal,
+            rsi: indicators.rsi,
+            supportLevel: low52 * 0.98,
+            resistanceLevel: high52 * 1.02,
             regime: regime,
             technical: TechnicalSignal(
-                rsi: rsi,
-                macd: macd,
-                macdSignal: macdSignal,
-                aboveSMA20: snapshot.closes.last! > sma20,
-                aboveSMA50: snapshot.closes.last! > sma50
+                rsi: indicators.rsi,
+                macd: indicators.macd,
+                macdSignal: indicators.macdSignal,
+                aboveSMA20: last > sma20,
+                aboveSMA50: last > sma50
             )
         )
-    }
-    
-    // Calculate exponential moving average
-    private func calculateEMA(_ prices: [Double], period: Int) -> Double {
-        guard prices.count >= period else { return prices.last ?? 0 }
-        let multiplier = 2.0 / (Double(period) + 1)
-        var ema = prices[0]
-        for i in 1..<prices.count {
-            ema = (prices[i] - ema) * multiplier + ema
-        }
-        return ema
-    }
-    
-    // Calculate RSI
-    private func RSI(_ prices: [Double], period: Int = 14) -> Double {
-        guard prices.count > period else { return 50.0 }
-        let changes = zip(prices.dropFirst(), prices.dropLast()).map { $1 - $0 }
-        let gains = gains.filter { $0 > 0 }.count
-        let losses = losses.filter { $0 < 0 }.count
-        let averageGain = gains.reduce(0, +) / Double(gains.count)
-        let averageLoss = abs(losses.filter { $0 < 0 }.reduce(0, +)) / Double(losses.count)
-        let rs = averageGain / averageLoss
-        return 100 - (100 / (1 + rs))
     }
 }

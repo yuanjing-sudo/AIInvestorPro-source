@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="InvestorKit">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1728"/>
+      <stop offset="1" stop-color="#060a12"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g stroke="#1a2c44" stroke-width="2" opacity="0.5">
+    <path d="M64 0V512M128 0V512M192 0V512M256 0V512M320 0V512M384 0V512M448 0V512"/>
+    <path d="M0 64H512M0 128H512M0 192H512M0 256H512M0 320H512M0 384H512M0 448H512"/>
+  </g>
+  <polyline points="70,360 150,300 230,318 310,214 390,236 450,132"
+    fill="none" stroke="url(#line)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#e2faff">
+    <circle cx="150" cy="300" r="13"/>
+    <circle cx="230" cy="318" r="13"/>
+    <circle cx="310" cy="214" r="13"/>
+    <circle cx="390" cy="236" r="13"/>
+  </g>
+  <path d="M450 132 L402 128 M450 132 L446 180" fill="none" stroke="#38bdf8" stroke-width="16" stroke-linecap="round"/>
+</svg>

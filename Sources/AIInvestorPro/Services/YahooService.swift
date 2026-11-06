@@ -10,11 +10,16 @@ public enum YahooServiceError: Error {
     
     var localizedDescription: String {
         switch self {
-        case .invalidSymbol(let sym): "Invalid symbol: \(sym)"
-        case .network(let err): "Network error: \(err.localizedDescription)"
-        case .rateLimit(let secs): "Rate limited. Retry in \(Int(secs)) seconds"
-        case .dataUnavailable(let sym): "Data unavailable for: \(sym)"
-        case .parsing(let err): "Parsing error: \(err.localizedDescription)"
+        case .invalidSymbol(let sym):
+            return "Invalid symbol: \(sym)"
+        case .network(let err):
+            return "Network error: \(err.localizedDescription)"
+        case .rateLimit(let secs):
+            return "Rate limited. Retry in \(Int(secs)) seconds"
+        case .dataUnavailable(let sym):
+            return "Data unavailable for: \(sym)"
+        case .parsing(let err):
+            return "Parsing error: \(err.localizedDescription)"
         }
     }
 }
@@ -36,7 +41,7 @@ public struct YahooQuote: Equatable {
     }
     
     var formattedChange: String {
-        "\(String(format: "%.2f", change)) (\(String(format: "%.2f%", changePercent)))"
+        "\(String(format: "%.2f", change)) (\(String(format: "%.2f", changePercent))%)"
     }
     
     var formattedMarketCap: String {
@@ -74,10 +79,13 @@ public struct YahooHistoricalData: Equatable {
     public var firstPrice: Double { points.first?.close ?? 0 }
     public var lastPrice: Double { points.last?.close ?? 0 }
     public var change: Double { lastPrice - firstPrice }
-    public var changePercent: Double { (lastPrice - firstPrice) / firstPrice * 100 }
+    public var changePercent: Double {
+        guard firstPrice > 0 else { return 0 }
+        return (lastPrice - firstPrice) / firstPrice * 100
+    }
     
     public var description: String {
-        "\(symbol): \(points.count) points, \(firstPrice.formattedCurrency) → \(lastPrice.formattedCurrency) (\(String(format: "%.2f%", changePercent)))"
+        "\(symbol): \(points.count) points, \(firstPrice.formattedCurrency) → \(lastPrice.formattedCurrency) (\(String(format: "%.2f", changePercent))%)"
     }
 }
 
@@ -110,13 +118,14 @@ public class YahooService {
         
         // In a real implementation, this would call Yahoo Finance API
         // For now, return synthetic data
-        let price = Double.random(in: 100...200)
-        let change = Double.random(in: -5...5)
+        var generator = SeededGenerator(seed: stableSeed(for: symbol))
+        let price = generator.next(in: 100...200)
+        let change = generator.next(in: -5...5)
         let changePercent = change / price * 100
-        let bid = price - Double.random(in: 0...2)
-        let ask = price + Double.random(in: 0...2)
-        let volume = Double.random(in: 1_000_000...100_000_000)
-        let marketCap = Double.random(in: 1_000_000_000...500_000_000_000)
+        let bid = price - generator.next(in: 0...2)
+        let ask = price + generator.next(in: 0...2)
+        let volume = generator.next(in: 1_000_000...100_000_000)
+        let marketCap = generator.next(in: 1_000_000_000...500_000_000_000)
         let dayRange = "\(String(format: "%.2f", price * 0.98))-\(String(format: "%.2f", price * 1.02))"
         
         return YahooQuote(
@@ -163,17 +172,19 @@ public class YahooService {
         default: pointCount = 30; startPrice = 150
         }
         
-        let returns = generateRealisticReturns(count: pointCount, startPrice: startPrice)
+        var generator = SeededGenerator(seed: stableSeed(for: symbol) &+ UInt64(pointCount))
+        let returns = generateRealisticReturns(count: pointCount, startPrice: startPrice, generator: &generator)
         let timestamps = generateTimestamps(count: pointCount, interval: interval)
         
-        let points = zip(timestamps, returns).map { date, close in
-            YahooHistoricalPoint(
-                date: date,
-                open: close * Double.random(in: 0.99...1.01),
-                high: close * Double.random(in: 1...1.03),
-                low: close * Double.random(in: 0.97...1),
+        let points = zip(timestamps, returns).map { pair in
+            let close = pair.1
+            return YahooHistoricalPoint(
+                date: pair.0,
+                open: close * generator.next(in: 0.99...1.01),
+                high: close * generator.next(in: 1...1.03),
+                low: close * generator.next(in: 0.97...1),
                 close: close,
-                volume: Double.random(in: 1_000_000...10_000_000),
+                volume: generator.next(in: 1_000_000...10_000_000),
                 adjClose: close
             )
         }
@@ -187,40 +198,43 @@ public class YahooService {
     }
     
     // MARK: - Private Helpers
-    private func generateRealisticReturns(count: Int, startPrice: Double) -> [Double] {
+    private func stableSeed(for symbol: String) -> UInt64 {
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in symbol.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 1_099_511_628_211
+        }
+        return hash
+    }
+
+    private func generateRealisticReturns(count: Int, startPrice: Double, generator: inout SeededGenerator) -> [Double] {
+        guard count > 0 else { return [] }
         var prices: [Double] = [startPrice]
         let dailyVolatility: Double = 0.02
-        
+
         for _ in 1..<count {
-            let change = Double.random(in: -dailyVolatility...dailyVolatility)
-            let newPrice = prices.last! * (1 + change)
+            let change = generator.next(in: -dailyVolatility...dailyVolatility)
+            let newPrice = max(0.01, (prices.last ?? startPrice) * (1 + change))
             prices.append(newPrice)
         }
-        
+
         return prices
     }
     
     private func generateTimestamps(count: Int, interval: String) -> [Date] {
-        var timestamps: [Date] = []
+        guard count > 0 else { return [] }
         let calendar = Calendar.current
-        var lastDate = Date()
-        
-        for i in 0..<count {
-            let date: Date
-            switch interval {
-            case "1d":
-                lastDate = calendar.date(byAdding: .day, value: -(count - 1 - i), to: lastDate) ?? Date()
-            case "1wk":
-                lastDate = calendar.date(byAdding: .weekOfYear, value: -(count - 1 - i), to: lastDate) ?? Date()
-            case "1mo":
-                lastDate = calendar.date(byAdding: .month, value: -(count - 1 - i), to: lastDate) ?? Date()
-            default:
-                lastDate = calendar.date(byAdding: .day, value: -(count - 1 - i), to: lastDate) ?? Date()
-            }
-            timestamps.append(lastDate)
+        let endDate = calendar.startOfDay(for: Date())
+        let component: Calendar.Component
+        switch interval {
+        case "1wk": component = .weekOfYear
+        case "1mo": component = .month
+        default: component = .day
         }
-        
-        return timestamps
+
+        return (0..<count).compactMap { index in
+            calendar.date(byAdding: component, value: -(count - 1 - index), to: endDate)
+        }
     }
 }
 

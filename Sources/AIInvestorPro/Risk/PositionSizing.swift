@@ -1,7 +1,7 @@
 // MARK: - Position Sizing Models
 import Foundation
 
-public enum PositionSizingMethod: String, CaseIterable {
+public enum PositionSizingMethod: String, CaseIterable, Sendable, Equatable {
     case fixedFraction = "fixed_fraction"
     case fixedDollar = "fixed_dollar"
     case kelly = "kelly"
@@ -10,15 +10,14 @@ public enum PositionSizingMethod: String, CaseIterable {
     case volatilityBreakout = "volatility_breakout"
 }
 
-// MARK: - Position Sizing Result
-public struct PositionSizingResult {
+public struct PositionSizingResult: Sendable, Equatable {
     public let suggestedQuantity: Double
-    public let suggestedPositionSize: Double // In currency
+    public let suggestedPositionSize: Double
     public let riskAmount: Double
     public let positionPctPortfolio: Double
     public let method: PositionSizingMethod
     public let justification: String
-    
+
     public init(
         suggestedQuantity: Double,
         suggestedPositionSize: Double,
@@ -36,173 +35,164 @@ public struct PositionSizingResult {
     }
 }
 
-// MARK: - Fixed Fraction Position Sizing
-public struct FixedFractionSizing {
-    let riskPctPortfolio: Double // % of portfolio to risk
-    let stopLossPct: Double // % stop loss from entry
-    
+public protocol PositionSizing {
+    func calculate(
+        entryPrice: Double,
+        stopPrice: Double,
+        accountSize: Double,
+        symbol: String
+    ) -> PositionSizingResult
+}
+
+private func percentages(_ value: Double) -> String {
+    String(format: "%.2f%%", value)
+}
+
+private func invalidStop(
+    method: PositionSizingMethod
+) -> PositionSizingResult {
+    PositionSizingResult(
+        suggestedQuantity: 0,
+        suggestedPositionSize: 0,
+        riskAmount: 0,
+        positionPctPortfolio: 0,
+        method: method,
+        justification: "Invalid stop price - same as entry price"
+    )
+}
+
+// MARK: - Fixed Fraction
+public struct FixedFractionSizing: PositionSizing, Sendable {
+    public let riskPctPortfolio: Double
+    public let stopLossPct: Double
+
     public init(riskPctPortfolio: Double = 1.0, stopLossPct: Double = 2.0) {
         self.riskPctPortfolio = riskPctPortfolio
         self.stopLossPct = stopLossPct
     }
-    
-    /// Calculate position size using fixed fraction method
-    /// - Parameters:
-    ///   - entryPrice: Entry price
-    ///   - stopPrice: Stop loss price
-    ///   - accountSize: Total account size
-    ///   - symbol: Symbol being traded
-    /// - Returns: Position sizing result
+
     public func calculate(
         entryPrice: Double,
         stopPrice: Double,
         accountSize: Double,
         symbol: String
     ) -> PositionSizingResult {
+        _ = symbol
         let riskAmount = accountSize * (riskPctPortfolio / 100.0)
         let priceRisk = abs(entryPrice - stopPrice)
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .fixedFraction,
-                justification: "Invalid stop price - same as entry price"
-            )
-        }
-        
+        guard priceRisk > 0, entryPrice > 0 else { return invalidStop(method: .fixedFraction) }
+
         let quantity = riskAmount / priceRisk
         let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Risk $\(String(format: "%.2f", riskAmount)) at risk of $\(String(format: "%.2f", priceRisk)) per share = \(String(format: "%.2f", quantity)) shares"
-        
+        let positionPct = accountSize > 0 ? positionSize / accountSize * 100.0 : 0
+
         return PositionSizingResult(
             suggestedQuantity: quantity,
             suggestedPositionSize: positionSize,
             riskAmount: riskAmount,
             positionPctPortfolio: positionPct,
             method: .fixedFraction,
-            justification: justification
+            justification: "Risk \(currency(riskAmount)) at \(currency(priceRisk)) per share = \(String(format: "%.2f", quantity)) shares"
         )
     }
 }
 
-// MARK: - Fixed Dollar Position Sizing
-public struct FixedDollarSizing {
-    let dollarAmount: Double // Fixed dollar amount to invest
-    
+// MARK: - Fixed Dollar
+public struct FixedDollarSizing: PositionSizing, Sendable {
+    public let dollarAmount: Double
+
     public init(dollarAmount: Double = 1000.0) {
         self.dollarAmount = dollarAmount
     }
-    
-    /// Calculate position size using fixed dollar method
-    /// - Parameters:
-    ///   - entryPrice: Entry price
-    ///   - accountSize: Total account size
-    ///   - symbol: Symbol being traded
-    /// - Returns: Position sizing result
+
     public func calculate(
         entryPrice: Double,
+        stopPrice: Double,
         accountSize: Double,
         symbol: String
     ) -> PositionSizingResult {
+        _ = (stopPrice, symbol)
+        guard entryPrice > 0 else { return invalidStop(method: .fixedDollar) }
         let quantity = dollarAmount / entryPrice
-        let positionSize = dollarAmount
-        let positionPct = (dollarAmount / accountSize) * 100.0
-        
-        let justification = "Fixed dollar investment of $\(String(format: "%.2f", dollarAmount)) at $\(String(format: "%.2f", entryPrice)) = \(String(format: "%.4f", quantity)) shares"
-        
+        let positionPct = accountSize > 0 ? dollarAmount / accountSize * 100.0 : 0
+
         return PositionSizingResult(
             suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
+            suggestedPositionSize: dollarAmount,
             riskAmount: dollarAmount,
             positionPctPortfolio: positionPct,
             method: .fixedDollar,
-            justification: justification
+            justification: "Fixed dollar investment of \(currency(dollarAmount)) at \(currency(entryPrice)) = \(String(format: "%.4f", quantity)) shares"
         )
     }
 }
 
-// MARK: - Kelly Criterion Position Sizing
-public struct KellySizing {
-    let winRate: Double // Historical win rate (0-1)
-    let winLossRatio: Double // Average win / average loss
-    
+// MARK: - Kelly Criterion
+public struct KellySizing: PositionSizing, Sendable {
+    public let winRate: Double
+    public let winLossRatio: Double
+
     public init(winRate: Double, winLossRatio: Double) {
-        self.winRate = max(0, min(1, winRate)) // Clamp to 0-1
-        self.winLossRatio = winLossRatio
+        self.winRate = max(0, min(1, winRate))
+        self.winLossRatio = max(0, winLossRatio)
     }
-    
-    /// Calculate Kelly fraction: f = (p * b - q) / b
-    /// where p = win rate, q = loss rate = 1-p, b = odds received (win/loss ratio)
+
     public var kellyFraction: Double {
         guard winLossRatio > 0 else { return 0 }
         let p = winRate
         let q = 1 - p
         let fraction = (p * winLossRatio - q) / winLossRatio
-        return max(0, min(fraction, 1.0)) // Clamp to 0-1
+        return max(0, min(fraction, 1.0))
     }
-    
-    /// Fractional Kelly - use half Kelly for safety
+
     public var fractionalKellyFraction: Double {
         kellyFraction / 2.0
     }
-    
-    /// Calculate position size using Kelly criterion
-    /// - Parameters:
-    ///   - entryPrice: Entry price
-    ///   - stopPrice: Stop loss price
-    ///   - accountSize: Total account size
-    /// - Returns: Position sizing result
+
     public func calculate(
         entryPrice: Double,
         stopPrice: Double,
-        accountSize: Double
+        accountSize: Double,
+        symbol: String
     ) -> PositionSizingResult {
-        let fullKelly = kellyFraction
-        let fractionalKelly = fractionalKellyFraction
-        let useFraction = fullKelly > 0 ? fractionalKelly : 0.1 // Minimum 10% if Kelly positive
-        
-        let riskAmount = accountSize * useFraction
-        let priceRisk = abs(entryPrice - stopPrice)
-        
-        guard priceRisk > 0 else {
+        _ = symbol
+        let riskFraction = fractionalKellyFraction
+        guard riskFraction > 0 else {
             return PositionSizingResult(
                 suggestedQuantity: 0,
                 suggestedPositionSize: 0,
                 riskAmount: 0,
                 positionPctPortfolio: 0,
                 method: .kelly,
-                justification: "Invalid stop price - using minimum position"
+                justification: "Kelly criterion is non-positive; no position"
             )
         }
-        
+
+        let riskAmount = accountSize * riskFraction
+        let priceRisk = abs(entryPrice - stopPrice)
+        guard priceRisk > 0, entryPrice > 0 else { return invalidStop(method: .kelly) }
+
         let quantity = riskAmount / priceRisk
         let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Kelly criterion: full=\(String(format: "%.1f%", fullKelly * 100))%, fractional=\(String(format: "%.1f%", fractionalKelly * 100))%, risking $\(String(format: "%.2f", riskAmount))"
-        
+        let positionPct = accountSize > 0 ? positionSize / accountSize * 100.0 : 0
+
         return PositionSizingResult(
             suggestedQuantity: quantity,
             suggestedPositionSize: positionSize,
             riskAmount: riskAmount,
             positionPctPortfolio: positionPct,
             method: .kelly,
-            justification: justification
+            justification: "Kelly: full \(percentages(kellyFraction * 100)), half \(percentages(riskFraction * 100)), risking \(currency(riskAmount))"
         )
     }
 }
 
-// MARK: - Volatility-Weighted Position Sizing
-public struct VolatilityWeightedSizing {
-    let volatilityPct: Double // Annualized volatility as percentage
-    let targetVolatilityPct: Double // Target portfolio volatility
-    let riskPctPortfolio: Double // % of portfolio to risk
-    
+// MARK: - Volatility Weighted
+public struct VolatilityWeightedSizing: PositionSizing, Sendable {
+    public let volatilityPct: Double
+    public let targetVolatilityPct: Double
+    public let riskPctPortfolio: Double
+
     public init(
         volatilityPct: Double,
         targetVolatilityPct: Double = 15.0,
@@ -212,473 +202,197 @@ public struct VolatilityWeightedSizing {
         self.targetVolatilityPct = targetVolatilityPct
         self.riskPctPortfolio = riskPctPortfolio
     }
-    
-    /// Calculate position size adjusted for volatility
-    /// - Parameters:
-    ///   - entryPrice: Entry price
-    ///   - stopPrice: Stop loss price
-    ///   - accountSize: Total account size
-    /// - Returns: Position sizing result
+
     public func calculate(
         entryPrice: Double,
         stopPrice: Double,
-        accountSize: Double
+        accountSize: Double,
+        symbol: String
     ) -> PositionSizingResult {
+        _ = symbol
         let riskAmount = accountSize * (riskPctPortfolio / 100.0)
         let priceRisk = abs(entryPrice - stopPrice)
-        
-        // Adjust for volatility - higher volatility = smaller position
-        let volAdjustment = targetVolatilityPct / max(volatilityPct, 1.0)
-        let adjustedRisk = riskAmount * volAdjustment
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .volatilityWeighted,
-                justification: "Invalid stop price - using minimum position"
-            )
-        }
-        
+        guard priceRisk > 0, entryPrice > 0 else { return invalidStop(method: .volatilityWeighted) }
+
+        let volatilityAdjustment = targetVolatilityPct / max(volatilityPct, 1.0)
+        let adjustedRisk = riskAmount * volatilityAdjustment
         let quantity = adjustedRisk / priceRisk
         let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Volatility-adjusted: vol=\(String(format: "%.1f%", volatilityPct))%, target=\(String(format: "%.1f%", targetVolatilityPct))%, risking $\(String(format: "%.2f", adjustedRisk))"
-        
+        let positionPct = accountSize > 0 ? positionSize / accountSize * 100.0 : 0
+
         return PositionSizingResult(
             suggestedQuantity: quantity,
             suggestedPositionSize: positionSize,
             riskAmount: adjustedRisk,
             positionPctPortfolio: positionPct,
             method: .volatilityWeighted,
-            justification: justification
+            justification: "Volatility-adjusted: vol \(percentages(volatilityPct)), target \(percentages(targetVolatilityPct)), risking \(currency(adjustedRisk))"
         )
     }
 }
 
-// MARK: - Risk-Based Position Sizing
-public struct RiskBasedSizing {
-    let maxRiskPct: Double // Maximum % capital at risk per trade
-    let maxConcurrentTrades: Int // Max simultaneous positions
-    let correlatedRiskPct: Double // Additional risk allowance for diversification
-    
+// MARK: - Risk Based
+public struct RiskBasedSizing: PositionSizing, Sendable {
+    public let maxRiskPct: Double
+    public let maxConcurrentTrades: Int
+    public let correlatedRiskPct: Double
+
     public init(
         maxRiskPct: Double = 2.0,
         maxConcurrentTrades: Int = 5,
         correlatedRiskPct: Double = 0.5
     ) {
         self.maxRiskPct = maxRiskPct
-        self.maxConcurrentTrades = maxConcurrentTrades
+        self.maxConcurrentTrades = max(1, maxConcurrentTrades)
         self.correlatedRiskPct = correlatedRiskPct
     }
-    
-    /// Calculate position size based on risk parameters
-    /// - Parameters:
-    ///   - entryPrice: Entry price
-    ///   - stopPrice: Stop loss price
-    ///   - accountSize: Total account size
-    ///   - concurrentTrades: Number of currently open positions
-    /// - Returns: Position sizing result
+
     public func calculate(
         entryPrice: Double,
         stopPrice: Double,
         accountSize: Double,
-        concurrentTrades: Int = 0
+        symbol: String
     ) -> PositionSizingResult {
+        calculate(
+            entryPrice: entryPrice,
+            stopPrice: stopPrice,
+            accountSize: accountSize,
+            symbol: symbol,
+            concurrentTrades: 0
+        )
+    }
+
+    public func calculate(
+        entryPrice: Double,
+        stopPrice: Double,
+        accountSize: Double,
+        symbol: String,
+        concurrentTrades: Int
+    ) -> PositionSizingResult {
+        _ = symbol
         let maxRisk = accountSize * (maxRiskPct / 100.0)
-        
-        // Reduce risk if many concurrent trades
-        let tradeFactor = Double(max(1, maxConcurrentTrades - concurrentTrades)) / Double(maxConcurrentTrades + 1)
+        let openTrades = max(0, min(concurrentTrades, maxConcurrentTrades))
+        let tradeFactor = Double(max(1, maxConcurrentTrades - openTrades)) / Double(maxConcurrentTrades + 1)
         let adjustedMaxRisk = maxRisk * tradeFactor
-        
         let priceRisk = abs(entryPrice - stopPrice)
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .riskBased,
-                justification: "Invalid stop price"
-            )
-        }
-        
+        guard priceRisk > 0, entryPrice > 0 else { return invalidStop(method: .riskBased) }
+
         let quantity = adjustedMaxRisk / priceRisk
         let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Risk-based: max \(maxRiskPct)% risk, \(concurrentTrades) open trades, risking $\(String(format: "%.2f", adjustedMaxRisk))"
-        
+        let positionPct = accountSize > 0 ? positionSize / accountSize * 100.0 : 0
+
         return PositionSizingResult(
             suggestedQuantity: quantity,
             suggestedPositionSize: positionSize,
             riskAmount: adjustedMaxRisk,
             positionPctPortfolio: positionPct,
             method: .riskBased,
-            justification: justification
+            justification: "Risk-based: max \(percentages(maxRiskPct)) risk, \(openTrades) open trades, risking \(currency(adjustedMaxRisk))"
         )
     }
 }
 
-// MARK: - Volatility Breakout Position Sizing
-public struct VolatilityBreakoutSizing {
-    let atrPct: Double // ATR as percentage of price
-    let breakoutThreshold: Double // Minimum ATR % for full position
-    let riskPctPortfolio: Double // % of portfolio to risk
-    
+// MARK: - Volatility Breakout
+public struct VolatilityBreakoutSizing: PositionSizing, Sendable {
+    public let atrPct: Double
+    public let breakoutThreshold: Double
+    public let riskPctPortfolio: Double
+
     public init(
         atrPct: Double,
         breakoutThreshold: Double = 1.5,
         riskPctPortfolio: Double = 1.0
     ) {
         self.atrPct = atrPct
-        self.breakoutThreshold = breakoutThreshold
+        self.breakoutThreshold = max(breakoutThreshold, 0.01)
         self.riskPctPortfolio = riskPctPortfolio
     }
-    
-    /// Calculate position size based on volatility breakout
-    /// - Parameters:
-    ///   - entryPrice: Entry price
-    ///   - stopPrice: Stop loss price
-    ///   - accountSize: Total account size
-    /// - Returns: Position sizing result
+
     public func calculate(
         entryPrice: Double,
         stopPrice: Double,
         accountSize: Double,
-        atrValue: Double? = nil
+        symbol: String
     ) -> PositionSizingResult {
+        calculate(
+            entryPrice: entryPrice,
+            stopPrice: stopPrice,
+            accountSize: accountSize,
+            symbol: symbol,
+            atrValue: nil
+        )
+    }
+
+    public func calculate(
+        entryPrice: Double,
+        stopPrice: Double,
+        accountSize: Double,
+        symbol: String,
+        atrValue: Double?
+    ) -> PositionSizingResult {
+        _ = symbol
         let riskAmount = accountSize * (riskPctPortfolio / 100.0)
-        
-        // Use ATR if provided, otherwise calculate from price difference
-        let atr = atrValue ?? (abs(stopPrice - entryPrice) * 2.0) // Simplified
-        let atrPctOfPrice = (atr / entryPrice) * 100.0
-        
-        // Scale position based on breakout strength
+        let atr = atrValue ?? (abs(stopPrice - entryPrice) * 2.0)
+        guard entryPrice > 0 else { return invalidStop(method: .volatilityBreakout) }
+        let atrPctOfPrice = atr / entryPrice * 100.0
         let scale = atrPctOfPrice / breakoutThreshold
-        let useScale = min(max(scale, 0.5), 2.0) // Clamp between 0.5 and 2.0
-        
+        let useScale = min(max(scale, 0.5), 2.0)
         let adjustedRisk = riskAmount * useScale
         let priceRisk = abs(entryPrice - stopPrice)
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .volatilityBreakout,
-                justification: "Invalid stop price"
-            )
-        }
-        
+        guard priceRisk > 0 else { return invalidStop(method: .volatilityBreakout) }
+
         let quantity = adjustedRisk / priceRisk
         let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Volatility breakout: ATR \(String(format: "%.2f%", atrPctOfPrice))%, scale \(String(format: "%.2f", useScale)), risking $\(String(format: "%.2f", adjustedRisk))"
-        
+        let positionPct = accountSize > 0 ? positionSize / accountSize * 100.0 : 0
+
         return PositionSizingResult(
             suggestedQuantity: quantity,
             suggestedPositionSize: positionSize,
             riskAmount: adjustedRisk,
             positionPctPortfolio: positionPct,
             method: .volatilityBreakout,
-            justification: justification
+            justification: "Volatility breakout: ATR \(percentages(atrPctOfPrice)), scale \(String(format: "%.2f", useScale)), risking \(currency(adjustedRisk))"
         )
     }
 }
 
-// MARK: - Position Sizing Factory
+// MARK: - Factory
 public enum PositionSizingFactory {
-    /// Create position sizer based on method
-    /// - Parameters:
-    ///   - method: Sizing method
-    ///   - parameters: Method-specific parameters
-    /// - Returns: Position sizing object
     public static func createSizer(
         _ method: PositionSizingMethod,
         parameters: [String: Any] = [:]
     ) -> any PositionSizing {
         switch method {
         case .fixedFraction:
-            let risk = parameters["riskPct"] as? Double ?? 1.0
-            let stopLoss = parameters["stopLossPct"] as? Double ?? 2.0
-            return FixedFractionSizing(riskPctPortfolio: risk, stopLossPct: stopLoss)
-            
+            return FixedFractionSizing(
+                riskPctPortfolio: parameters["riskPct"] as? Double ?? 1.0,
+                stopLossPct: parameters["stopLossPct"] as? Double ?? 2.0
+            )
         case .fixedDollar:
-            let amount = parameters["dollarAmount"] as? Double ?? 1000.0
-            return FixedDollarSizing(dollarAmount: amount)
-            
+            return FixedDollarSizing(dollarAmount: parameters["dollarAmount"] as? Double ?? 1000.0)
         case .kelly:
-            let winRate = parameters["winRate"] as? Double ?? 0.5
-            let winLossRatio = parameters["winLossRatio"] as? Double ?? 2.0
-            return KellySizing(winRate: winRate, winLossRatio: winLossRatio)
-            
+            return KellySizing(
+                winRate: parameters["winRate"] as? Double ?? 0.5,
+                winLossRatio: parameters["winLossRatio"] as? Double ?? 2.0
+            )
         case .volatilityWeighted:
-            let volatility = parameters["volatilityPct"] as? Double ?? 15.0
-            let targetVol = parameters["targetVolatility"] as? Double ?? 15.0
-            let risk = parameters["riskPct"] as? Double ?? 1.0
-            return VolatilityWeightedSizing(volatilityPct: volatility, targetVolatilityPct: targetVol, riskPctPortfolio: risk)
-            
+            return VolatilityWeightedSizing(
+                volatilityPct: parameters["volatilityPct"] as? Double ?? 15.0,
+                targetVolatilityPct: parameters["targetVolatility"] as? Double ?? 15.0,
+                riskPctPortfolio: parameters["riskPct"] as? Double ?? 1.0
+            )
         case .riskBased:
-            let maxRisk = parameters["maxRiskPct"] as? Double ?? 2.0
-            let maxTrades = parameters["maxConcurrentTrades"] as? Int ?? 5
-            let correlated = parameters["correlatedRisk"] as? Double ?? 0.5
-            return RiskBasedSizing(maxRiskPct: maxRisk, maxConcurrentTrades: maxTrades, correlatedRiskPct: correlated)
-            
+            return RiskBasedSizing(
+                maxRiskPct: parameters["maxRiskPct"] as? Double ?? 2.0,
+                maxConcurrentTrades: parameters["maxConcurrentTrades"] as? Int ?? 5,
+                correlatedRiskPct: parameters["correlatedRisk"] as? Double ?? 0.5
+            )
         case .volatilityBreakout:
-            let atrPct = parameters["atrPct"] as? Double ?? 2.0
-            let threshold = parameters["breakoutThreshold"] as? Double ?? 1.5
-            let risk = parameters["riskPct"] as? Double ?? 1.0
-            return VolatilityBreakoutSizing(atrPct: atrPct, breakoutThreshold: threshold, riskPctPortfolio: risk)
-            
-        default:
-            return FixedFractionSizing()
-        }
-    }
-}
-
-// MARK: - Position Sizing Protocol
-public protocol PositionSizing {
-    func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double,
-        symbol: String
-    ) -> PositionSizingResult
-}
-// MARK: - Position Sizing Protocol Conformances
-
-extension FixedFractionSizing: PositionSizing {
-    public func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double,
-        symbol: String
-    ) -> PositionSizingResult {
-        let riskAmount = accountSize * (riskPctPortfolio / 100.0)
-        let priceRisk = abs(entryPrice - stopPrice)
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .fixedFraction,
-                justification: "Invalid stop price - same as entry price"
+            return VolatilityBreakoutSizing(
+                atrPct: parameters["atrPct"] as? Double ?? 2.0,
+                breakoutThreshold: parameters["breakoutThreshold"] as? Double ?? 1.5,
+                riskPctPortfolio: parameters["riskPct"] as? Double ?? 1.0
             )
         }
-        
-        let quantity = riskAmount / priceRisk
-        let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Risk $\(String(format: "%.2f", riskAmount)) at risk of $\(String(format: "%.2f", priceRisk)) per share = \(String(format: "%.2f", quantity)) shares"
-        
-        return PositionSizingResult(
-            suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
-            riskAmount: riskAmount,
-            positionPctPortfolio: positionPct,
-            method: .fixedFraction,
-            justification: justification
-        )
-    }
-}
-
-extension FixedDollarSizing: PositionSizing {
-    public func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double,
-        symbol: String
-    ) -> PositionSizingResult {
-        let quantity = dollarAmount / entryPrice
-        let positionSize = dollarAmount
-        let positionPct = (dollarAmount / accountSize) * 100.0
-        
-        let justification = "Fixed dollar investment of $\(String(format: "%.2f", dollarAmount)) at $\(String(format: "%.2f", entryPrice)) = \(String(format: "%.4f", quantity)) shares"
-        
-        return PositionSizingResult(
-            suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
-            riskAmount: dollarAmount,
-            positionPctPortfolio: positionPct,
-            method: .fixedDollar,
-            justification: justification
-        )
-    }
-}
-
-extension KellySizing: PositionSizing {
-    public func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double
-    ) -> PositionSizingResult {
-        let fullKelly = kellyFraction
-        let fractionalKelly = fractionalKellyFraction
-        let useFraction = fullKelly > 0 ? fractionalKelly : 0.1
-        
-        let riskAmount = accountSize * useFraction
-        let priceRisk = abs(entryPrice - stopPrice)
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .kelly,
-                justification: "Invalid stop price - using minimum position"
-            )
-        }
-        
-        let quantity = riskAmount / priceRisk
-        let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Kelly criterion: full=\(String(format: "%.1f%", fullKelly * 100))%, fractional=\(String(format: "%.1f%", fractionalKelly * 100))%, risking $\(String(format: "%.2f", riskAmount))"
-        
-        return PositionSizingResult(
-            suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
-            riskAmount: riskAmount,
-            positionPctPortfolio: positionPct,
-            method: .kelly,
-            justification: justification
-        )
-    }
-}
-
-extension VolatilityWeightedSizing: PositionSizing {
-    public func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double
-    ) -> PositionSizingResult {
-        let riskAmount = accountSize * (riskPctPortfolio / 100.0)
-        let priceRisk = abs(entryPrice - stopPrice)
-        
-        let volAdjustment = targetVolatilityPct / max(volatilityPct, 1.0)
-        let adjustedRisk = riskAmount * volAdjustment
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .volatilityWeighted,
-                justification: "Invalid stop price"
-            )
-        }
-        
-        let quantity = adjustedRisk / priceRisk
-        let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Volatility-adjusted: vol=\(String(format: "%.1f%", volatilityPct))%, target=\(String(format: "%.1f%", targetVolatilityPct))%, risking $\(String(format: "%.2f", adjustedRisk))"
-        
-        return PositionSizingResult(
-            suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
-            riskAmount: adjustedRisk,
-            positionPctPortfolio: positionPct,
-            method: .volatilityWeighted,
-            justification: justification
-        )
-    }
-}
-
-extension RiskBasedSizing: PositionSizing {
-    public func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double,
-        concurrentTrades: Int = 0
-    ) -> PositionSizingResult {
-        let maxRisk = accountSize * (maxRiskPct / 100.0)
-        
-        let tradeFactor = Double(max(1, maxConcurrentTrades - concurrentTrades)) / Double(maxConcurrentTrades + 1)
-        let adjustedMaxRisk = maxRisk * tradeFactor
-        
-        let priceRisk = abs(entryPrice - stopPrice)
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .riskBased,
-                justification: "Invalid stop price"
-            )
-        }
-        
-        let quantity = adjustedMaxRisk / priceRisk
-        let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Risk-based: max \(maxRiskPct)% risk, \(concurrentTrades) open trades, risking $\(String(format: "%.2f", adjustedMaxRisk))"
-        
-        return PositionSizingResult(
-            suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
-            riskAmount: adjustedMaxRisk,
-            positionPctPortfolio: positionPct,
-            method: .riskBased,
-            justification: justification
-        )
-    }
-}
-
-extension VolatilityBreakoutSizing: PositionSizing {
-    public func calculate(
-        entryPrice: Double,
-        stopPrice: Double,
-        accountSize: Double,
-        atrValue: Double? = nil
-    ) -> PositionSizingResult {
-        let riskAmount = accountSize * (riskPctPortfolio / 100.0)
-        
-        let atr = atrValue ?? (abs(stopPrice - entryPrice) * 2.0)
-        let atrPctOfPrice = (atr / entryPrice) * 100.0
-        
-        let scale = atrPctOfPrice / breakoutThreshold
-        let useScale = min(max(scale, 0.5), 2.0)
-        
-        let adjustedRisk = riskAmount * useScale
-        let priceRisk = abs(entryPrice - stopPrice)
-        
-        guard priceRisk > 0 else {
-            return PositionSizingResult(
-                suggestedQuantity: 0,
-                suggestedPositionSize: 0,
-                riskAmount: 0,
-                positionPctPortfolio: 0,
-                method: .volatilityBreakout,
-                justification: "Invalid stop price"
-            )
-        }
-        
-        let quantity = adjustedRisk / priceRisk
-        let positionSize = quantity * entryPrice
-        let positionPct = (positionSize / accountSize) * 100.0
-        
-        let justification = "Volatility breakout: ATR \(String(format: "%.2f%", atrPctOfPrice))%, scale \(String(format: "%.2f", useScale)), risking $\(String(format: "%.2f", adjustedRisk))"
-        
-        return PositionSizingResult(
-            suggestedQuantity: quantity,
-            suggestedPositionSize: positionSize,
-            riskAmount: adjustedRisk,
-            positionPctPortfolio: positionPct,
-            method: .volatilityBreakout,
-            justification: justification
-        )
     }
 }
