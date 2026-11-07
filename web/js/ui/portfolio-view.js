@@ -38,6 +38,11 @@ export function initPortfolio() {
 
   renderPortfolio();
   $('#tax-table tbody').innerHTML = emptyRow(4, 'Choose a symbol, quantity and price, then compare.');
+  document.addEventListener('ik:market-updated', () => {
+    setPriceFromQuote('#tx-symbol', '#tx-price');
+    setPriceFromQuote('#tax-symbol', '#tax-price');
+    renderPortfolio();
+  });
 }
 
 function formatShares(value) {

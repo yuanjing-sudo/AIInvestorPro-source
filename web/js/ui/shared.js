@@ -13,6 +13,10 @@ export const fundamentals = market.fundamentals;
 export const news = market.news;
 export const quality = market.quality;
 export const macro = market.macro;
+market.source = 'demo';
+market.provider = 'Deterministic local feed';
+market.generatedAt = new Date().toISOString();
+market.live = false;
 export const assetsBySymbol = Object.fromEntries(UNIVERSE.map((asset) => [asset.symbol, asset]));
 export const returnsBySymbol = Object.fromEntries(
   UNIVERSE.map((asset) => [asset.symbol, returnsFromCandles(candleMap[asset.symbol])]),
@@ -20,6 +24,44 @@ export const returnsBySymbol = Object.fromEntries(
 export const indicators = Object.fromEntries(
   UNIVERSE.map((asset) => [asset.symbol, summarize(candleMap[asset.symbol])]),
 );
+
+function normalizeServerCandles(candles) {
+  return candles.map((candle) => ({
+    ...candle,
+    date: candle.date instanceof Date ? candle.date : new Date(candle.date),
+  }));
+}
+
+/**
+ * Merge a server snapshot into the shared mutable market objects. Views listen
+ * for the `ik:market-updated` event and re-render with the new prices.
+ */
+export function hydrateMarket(snapshot) {
+  if (!snapshot?.candleMap) return false;
+  const symbols = Object.keys(snapshot.candleMap).filter((symbol) => assetsBySymbol[symbol]);
+  if (!symbols.length) return false;
+  for (const symbol of symbols) {
+    const candles = normalizeServerCandles(snapshot.candleMap[symbol]);
+    candleMap[symbol] = candles;
+    returnsBySymbol[symbol] = returnsFromCandles(candles);
+    indicators[symbol] = summarize(candles);
+  }
+  if (snapshot.quotes) Object.assign(quotes, snapshot.quotes);
+  if (snapshot.fundamentals) Object.assign(fundamentals, snapshot.fundamentals);
+  if (snapshot.news) Object.assign(news, snapshot.news);
+  if (snapshot.quality) Object.assign(quality, snapshot.quality);
+  if (snapshot.macro) Object.assign(macro, snapshot.macro);
+  market.source = snapshot.source ?? 'live';
+  market.provider = snapshot.provider ?? 'Server API';
+  market.generatedAt = snapshot.generatedAt ?? new Date().toISOString();
+  market.asOf = snapshot.asOf ?? null;
+  market.live = market.source !== 'synthetic';
+  market.warnings = snapshot.warnings ?? [];
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('ik:market-updated', { detail: snapshot }));
+  }
+  return true;
+}
 
 const PORTFOLIO_KEY = 'ik.portfolio.v1';
 const ALERTS_KEY = 'ik.alerts.v1';

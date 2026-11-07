@@ -30,6 +30,7 @@ export function initAlerts() {
 
   setDefaultThreshold();
   renderAlerts();
+  document.addEventListener('ik:market-updated', renderAlerts);
 }
 
 function typeMeta(id) {

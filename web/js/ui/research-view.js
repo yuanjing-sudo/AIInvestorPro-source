@@ -2,7 +2,7 @@
 // correlation, sentiment and data-quality coverage for one asset.
 
 import {
-  UNIVERSE, quotes, candleMap, fundamentals, news, quality, macro,
+  UNIVERSE, quotes, candleMap, fundamentals, news, quality, macro, market,
   assetsBySymbol, returnsBySymbol, state, $, escapeHtml, dateShort,
   formatMoney, formatMoneyCompact, formatPercent, formatSignedPercent,
   formatNumber, formatCompact, signClass, makeChart, statCard, toast,
@@ -31,6 +31,7 @@ export function initResearch() {
     renderResearch();
   });
   $('#research-export')?.addEventListener('click', exportSnapshot);
+  document.addEventListener('ik:market-updated', renderResearch);
   renderResearch();
 }
 
@@ -39,6 +40,13 @@ function exportSnapshot() {
   const snapshot = {
     generatedAt: new Date().toISOString(),
     symbol,
+    dataSource: {
+      source: market.source,
+      provider: market.provider,
+      generatedAt: market.generatedAt,
+      asOf: market.asOf,
+      live: market.live,
+    },
     quote: quotes[symbol],
     fundamentals: fundamentals[symbol],
     news: news[symbol],

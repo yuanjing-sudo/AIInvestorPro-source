@@ -35,6 +35,7 @@ export function initDashboard() {
   });
 
   renderDashboard();
+  document.addEventListener('ik:market-updated', renderDashboard);
 }
 
 export function renderDashboard() {

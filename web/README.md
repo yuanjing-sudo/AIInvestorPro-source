@@ -9,8 +9,8 @@ iPhone, iPad, Windows, macOS, Linux, ChromeOS and any modern browser.
 
 The native target is SwiftUI, which does not run on Android. This PWA provides
 feature parity for the analytics that do not need Apple frameworks, without an
-app store, account, server or API key. Once loaded it works offline and can be
-installed to the home screen or desktop.
+app store or API key. The default build is fully static and works offline; an
+optional Cloudflare Worker adds a dynamic server-side API and live data.
 
 ## Run locally
 
@@ -30,14 +30,15 @@ cd web
 npm install              # only needed for the JSDOM smoke test
 npm test                 # 100 numerical/unit tests
 npm run test:ui          # drives every tab in a JSDOM browser smoke test
-npm run test:all         # both
+npm run test:live        # simulates the Worker API and verifies live hydration
+npm run test:all         # all three
 ```
 
 The suite covers indicators, performance statistics, covariance/risk
 contributions, Monte Carlo determinism, optimizers, backtesting (including a
 no-lookahead check), screening, tax lots, alerts, the forecast ensemble and
-walk-forward diagnostics, market data/fundamentals/sentiment generation, and the
-precache manifest.
+walk-forward diagnostics, market data/fundamentals/sentiment generation, the
+precache manifest, and live-mode hydration with a mocked Worker API.
 
 ## Install on a device
 
@@ -72,6 +73,37 @@ https://yuanjing-sudo.github.io/AIInvestorPro-source/
 Pages is enabled with **GitHub Actions** as the source; the workflow tests the
 web app before publishing only the static `web/` assets.
 
+### Cloudflare Workers
+
+For a dynamic, server-side deployment, use the Worker in [`../worker`](../worker/README.md).
+One Worker serves this `web/` directory and exposes live JSON endpoints:
+
+```text
+/api/health
+/api/market?symbols=SPY,QQQ&range=2y
+/api/quote/SPY
+/api/forecast/SPY?horizon=21&simulations=2000&seed=7
+/api/macro
+```
+
+```bash
+cd ../worker
+npm install
+npx wrangler login
+npx wrangler deploy
+```
+
+The client probes `/api/health` on boot. When the Worker is present it hydrates
+live Yahoo chart data, requests forecasts server-side and shows a **Live · Yahoo**
+badge. When the API is absent (GitHub Pages, file server, offline), the same
+build uses the local synthetic feed with no visible failure. The service worker
+never caches `/api/*` responses.
+
+Automatic deployment is configured in
+[`../.github/workflows/cloudflare.yml`](../.github/workflows/cloudflare.yml).
+Add `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` as repository secrets to
+enable it; otherwise the workflow tests the Worker and skips the deploy.
+
 Any static host works as well: Netlify, Cloudflare Pages, Vercel, S3, nginx or a
 USB stick. Upload the contents of `web/` (excluding `tests/`, `scripts/` and
 `node_modules/`).
@@ -99,10 +131,13 @@ The data foundation includes 26 assets across equities, ETFs, fixed income,
 commodities, digital assets and international exposure; three years of
 deterministic OHLCV; company/ETF fundamentals; a macro backdrop; and seeded news
 sentiment. Every line is generated locally and feeds the research terminal or the
-forecast model's context tilt.
+forecast model's context tilt. On Cloudflare Workers, prices, candles and macro
+proxies hydrate from Yahoo Finance server-side, while fundamentals, news and the
+quality audit remain deterministic unless a licensed provider is added.
 
-Everything is computed locally. Portfolio, alerts and theme are stored in
-`localStorage`; clearing site data resets them.
+Everything is computed locally in the static build. Portfolio, alerts and theme
+are stored in `localStorage`; clearing site data resets them. The Worker API is
+read-only and never receives portfolio data.
 
 ## Architecture
 
@@ -125,6 +160,7 @@ web/
     taxlots.js             Lot ledger and disposal methods
     alerts.js              Rule creation and evaluation
     forecast.js            Feature matrix, ridge/Holt/drift ensemble, walk-forward
+    live.js                Optional Cloudflare Worker API client and live-mode state
   js/ui/
     shared.js              State, formatting, persistence, chart registry
     charts.js              Canvas line/band/scatter chart with tooltips
@@ -138,28 +174,37 @@ web/
     portfolio-view.js      Ledger and tax lots
     alerts-view.js         Alert rules/history
     app.js                 Navigation, command palette, ticker, theme, boot
-  tests/                   100 unit tests + JSDOM smoke test
+  tests/                   100 unit tests + UI and live-mode smoke tests
 ```
 
 ## Using real market data
 
-Replace `generateCandles` / `marketSnapshot` in `js/core/marketdata.js` with a
-provider such as Polygon, Finnhub, Alpha Vantage, Yahoo Finance or your own
-backend. Keep the candle shape:
+The optional Cloudflare Worker already implements a server-side Yahoo Finance
+adapter and runs the forecast engine there. The browser detects it via
+`/api/health`; no configuration is needed.
+
+To replace it with a licensed provider, keep the response shape used by
+`worker/src/market.js` (`candles`, `quotes`, `fundamentals`, `news`, `quality`,
+`macro`) or replace `generateCandles` / `marketSnapshot` in
+`js/core/marketdata.js` for the static build. Keep the candle shape:
 
 ```js
 { date: Date, dateString: 'YYYY-MM-DD', open, high, low, close, volume }
 ```
 
 The rest of the app consumes that shape and does not require changes. For
-production, add a server-side proxy so API keys never reach the browser.
+production, add a server-side proxy so provider API keys never reach the browser.
 
 ## Limitations
 
-- Bundled prices, fundamentals, macro values and headlines are synthetic and
-  deterministic. They are not live quotes or real research.
+- In the static build, bundled prices, fundamentals, macro values and headlines
+  are synthetic and deterministic. In Workers mode, prices and macro proxies are
+  live Yahoo Finance data (unofficial, possibly delayed); fundamentals and news
+  remain synthetic.
 - Forecast intervals are model-based and assume the recent return distribution
   is informative. They cannot anticipate regime breaks, gaps or corporate events.
+- The Worker API is unauthenticated and read-only; do not add private data to it
+  without authentication and rate limiting.
 - Tax-lot comparison is illustrative and ignores jurisdiction-specific rules,
   wash sales and short/long-term rates.
 - Stress scenarios are static, illustrative sector shocks.

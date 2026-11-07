@@ -3,8 +3,9 @@
 
 import {
   UNIVERSE, state, quotes, candleMap, $, $$, redrawCharts, toast,
-  escapeHtml, dateShort, formatSignedPercent, signClass,
+  escapeHtml, dateShort, formatSignedPercent, signClass, hydrateMarket,
 } from './shared.js';
+import { checkApi, fetchMacro, fetchMarket, live } from '../core/live.js';
 import { initDashboard, renderDashboard } from './dashboard.js';
 import { initBacktest } from './backtest-view.js';
 import { initOptimize } from './optimize-view.js';
@@ -136,6 +137,75 @@ function initTicker() {
   $('#header-asof').textContent = date ? `As of ${dateShort(date)}` : '—';
   $('#sidebar-rows').textContent = `${(spy.length * UNIVERSE.length).toLocaleString()} bars`;
   $('#sidebar-close').textContent = date ? dateShort(date) : '—';
+}
+
+function applyDataSource() {
+  const badge = $('#data-source');
+  const label = $('#data-source-label');
+  if (!badge || !label) return;
+  badge.hidden = !live.enabled;
+  if (!live.enabled) {
+    $('#refresh-data').hidden = true;
+    const source = $('#sidebar-source');
+    if (source) source.textContent = 'Demo · local';
+    const copy = $('#sidebar-copy');
+    if (copy) copy.textContent = '26 assets · 3 years of OHLCV · fundamentals, macro and sentiment lines.';
+    return;
+  }
+  const source = live.source === 'live' ? 'Live · Yahoo' : live.source === 'mixed' ? 'Live · mixed' : 'Server · fallback';
+  label.textContent = source;
+  $('#refresh-data').hidden = false;
+  const sidebarSource = $('#sidebar-source');
+  if (sidebarSource) sidebarSource.textContent = live.source === 'live' ? 'Yahoo · live' : 'Worker · mixed';
+  const copy = $('#sidebar-copy');
+  if (copy) copy.textContent = `${live.provider}. Prices and candles are hydrated from the Worker API; the local feed remains the offline fallback.`;
+}
+
+async function loadLiveData(options = {}) {
+  if (!live.enabled) return false;
+  const button = $('#refresh-data');
+  button?.classList.add('is-busy');
+  try {
+    const symbols = UNIVERSE.map((asset) => asset.symbol);
+    const [snapshot, macroPayload] = await Promise.all([
+      fetchMarket(symbols, { range: '2y' }),
+      fetchMacro().catch(() => null),
+    ]);
+    if (macroPayload?.macro) snapshot.macro = macroPayload.macro;
+    live.source = snapshot.source ?? 'live';
+    live.provider = snapshot.provider ?? 'Cloudflare Worker API';
+    live.lastUpdated = snapshot.generatedAt ?? new Date().toISOString();
+    live.error = null;
+    hydrateMarket(snapshot);
+    initTicker();
+    applyDataSource();
+    if (options.announce) toast(`Live data refreshed · ${live.source} · ${dateShort(live.lastUpdated)}`);
+    return true;
+  } catch (error) {
+    live.error = error?.message ?? 'Live data unavailable';
+    applyDataSource();
+    if (options.announce) toast(`Live refresh failed: ${live.error}`);
+    return false;
+  } finally {
+    button?.classList.remove('is-busy');
+  }
+}
+
+async function initLiveData() {
+  const health = await checkApi();
+  if (!health) {
+    applyDataSource();
+    return;
+  }
+  live.enabled = true;
+  live.provider = 'Yahoo Finance via Cloudflare Worker';
+  live.source = 'mixed';
+  applyDataSource();
+  await loadLiveData();
+  $('#refresh-data')?.addEventListener('click', () => loadLiveData({ announce: true }));
+  window.setInterval(() => {
+    if (live.enabled && document.visibilityState === 'visible') loadLiveData();
+  }, 5 * 60 * 1000);
 }
 
 function initTheme() {
@@ -362,6 +432,7 @@ function boot() {
   const requested = new URLSearchParams(window.location.search).get('tab');
   setTab(TABS.includes(requested) ? requested : 'dashboard', { updateUrl: false });
   initOffline();
+  initLiveData();
 }
 
 if (document.readyState === 'loading') {
