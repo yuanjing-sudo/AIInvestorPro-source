@@ -117,7 +117,9 @@ to `env.ASSETS.fetch(request)`.
   Cloudflare compresses responses on the wire. Use `range=1y` or request fewer
   symbols if you need a smaller payload.
 - A free Workers plan allows 50 subrequests per invocation. The full snapshot
-  uses 26 Yahoo chart subrequests. `/api/macro` uses 7.
+  uses one Yahoo chart fetch per symbol (26 total) and deliberately bypasses the
+  per-symbol edge-cache calls, which also count toward that budget. Individual
+  quote, forecast and macro requests still use the edge cache.
 - `GET` and `OPTIONS` are the only accepted methods. CORS is open for read-only
   use; add authentication before exposing private data or write operations.
 - The API is read-only and holds no user portfolio data. Portfolio, alerts and

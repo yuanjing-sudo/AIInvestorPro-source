@@ -95,8 +95,8 @@ function cacheKey(url) {
   return new Request(url, { method: 'GET', headers: { accept: 'application/json' } });
 }
 
-async function cachedJson(url, ttl) {
-  const edgeCache = typeof caches !== 'undefined' ? caches.default : null;
+async function cachedJson(url, ttl, useCache = true) {
+  const edgeCache = useCache && typeof caches !== 'undefined' ? caches.default : null;
   const key = cacheKey(url);
   if (edgeCache) {
     try {
@@ -137,6 +137,6 @@ export async function fetchYahooChart(symbol, options = {}) {
   url.searchParams.set('interval', interval);
   url.searchParams.set('includePrePost', 'false');
   url.searchParams.set('events', 'div,splits');
-  const payload = await cachedJson(url.toString(), options.ttl ?? 300);
+  const payload = await cachedJson(url.toString(), options.ttl ?? 300, options.cache !== false);
   return parseChart(payload, normalized);
 }
