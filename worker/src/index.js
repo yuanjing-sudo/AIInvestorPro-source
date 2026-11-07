@@ -6,8 +6,8 @@
 // is unavailable (for example on the static GitHub Pages deployment).
 
 import {
-  ALLOWED_SYMBOLS, buildForecastPayload, buildMacro, buildSnapshot, buildSymbol,
-  requireSymbol, resolveSymbols,
+  ALLOWED_SYMBOLS, buildForecastPayload, buildMacro, buildSnapshot, buildSourceCatalog,
+  buildSymbol, requireSymbol, resolveSymbols,
 } from './market.js';
 import { UNIVERSE } from '../../web/js/core/marketdata.js';
 
@@ -70,8 +70,9 @@ async function handleApi(request, env, url) {
       runtime: 'cloudflare-workers',
       live: true,
       assets: UNIVERSE.length,
+      providers: buildSourceCatalog().providers.filter((provider) => provider.status === 'active').map((provider) => provider.id),
       now: new Date().toISOString(),
-      endpoints: ['/api/health', '/api/market', '/api/quote/:symbol', '/api/forecast/:symbol', '/api/macro'],
+      endpoints: ['/api/health', '/api/sources', '/api/market', '/api/quote/:symbol', '/api/forecast/:symbol', '/api/macro'],
     }, 200, 30);
   }
 
@@ -79,27 +80,37 @@ async function handleApi(request, env, url) {
     return json({ ok: true, assets: UNIVERSE, symbols: ALLOWED_SYMBOLS }, 200, 3600);
   }
 
+  if (route === 'sources') {
+    return json(buildSourceCatalog(), 200, 3600);
+  }
+
   if (route === 'market') {
     const symbols = resolveSymbols(url.searchParams.get('symbols') ?? '');
     if (!symbols.length) return json({ ok: false, error: 'No valid symbols requested' }, 400);
-    const snapshot = await buildSnapshot(symbols, { range: rangeFrom(url.searchParams.get('range')) });
+    const snapshot = await buildSnapshot(symbols, {
+      range: rangeFrom(url.searchParams.get('range')),
+      env,
+    });
     return json(snapshot, 200, 60);
   }
 
   if (route === 'quote' || route === 'symbol') {
     const symbol = requireSymbol(parts[2] ?? '');
-    const payload = await buildSymbol(symbol, { range: rangeFrom(url.searchParams.get('range')) });
+    const payload = await buildSymbol(symbol, {
+      range: rangeFrom(url.searchParams.get('range')),
+      env,
+    });
     return json(payload, 200, 60);
   }
 
   if (route === 'forecast') {
     const symbol = requireSymbol(parts[2] ?? '');
-    const payload = await buildForecastPayload(symbol, Object.fromEntries(url.searchParams));
+    const payload = await buildForecastPayload(symbol, Object.fromEntries(url.searchParams), { env });
     return json(payload, 200, 120);
   }
 
   if (route === 'macro') {
-    const payload = await buildMacro();
+    const payload = await buildMacro(env);
     return json(payload, 200, 300);
   }
 

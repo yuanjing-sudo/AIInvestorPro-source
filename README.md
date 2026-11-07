@@ -89,10 +89,11 @@ screen (Safari Share → Add to Home Screen), or a desktop. Portfolio, alerts an
 are stored locally.
 
 An optional Cloudflare Worker deployment adds a real server side: the Worker serves the
-same PWA and exposes `/api/market`, `/api/quote/:symbol`, `/api/forecast/:symbol` and
-`/api/macro`. In that mode the browser hydrates live Yahoo Finance chart data and requests
-forecasts from the server; if the API is unavailable it silently falls back to the
-deterministic local feed. See [`worker/README.md`](worker/README.md).
+same PWA and exposes `/api/market`, `/api/quote/:symbol`, `/api/forecast/:symbol`,
+`/api/macro` and `/api/sources`. In that mode the browser hydrates a multi-source live
+feed (Yahoo Finance for equities/ETFs, Coinbase/CoinGecko/DefiLlama for crypto and FRED
+for macro) and requests forecasts from the server. If the API is unavailable it silently
+falls back to the deterministic local feed. See [`worker/README.md`](worker/README.md).
 
 GitHub Pages deployment is automated by
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml), using **GitHub Actions** as
@@ -172,7 +173,8 @@ if let report = result?.report {
    - a portfolio-level (multi-asset) backtester,
    - split/dividend aware tax-lot accounting and wash-sale handling,
    - provider adapters for a licensed market-data feed (the Cloudflare Worker
-     currently adapts the unofficial Yahoo chart endpoint).
+     currently adapts Yahoo, Coinbase, CoinGecko, DefiLlama and FRED, with optional
+     CoinCap and CoinMarketCap keys).
 5. **Harden the Yahoo client**: response validation, cancellation propagation, metrics,
    and a documented fallback when the unofficial endpoint changes.
 

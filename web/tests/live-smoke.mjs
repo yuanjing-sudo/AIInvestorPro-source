@@ -41,7 +41,9 @@ const market = marketSnapshot(300);
 const snapshot = {
   ...market,
   source: 'live',
-  provider: 'Yahoo Finance chart API (server-side)',
+  provider: 'Multi-source server-side market data',
+  sources: Object.fromEntries(Object.keys(market.candleMap).map((symbol) => [symbol, 'yahoo'])),
+  providerBreakdown: { yahoo: Object.keys(market.candleMap).length },
   generatedAt: new Date().toISOString(),
   asOf: market.quotes.SPY.asOf,
   warnings: [],
@@ -58,7 +60,7 @@ const json = (payload, status = 200) => new Response(JSON.stringify(payload), {
 });
 globalThis.fetch = async (input) => {
   const url = new URL(String(input));
-  if (url.pathname === '/api/health') return json({ ok: true, live: true, version: '2.0.0' });
+  if (url.pathname === '/api/health') return json({ ok: true, live: true, version: '2.0.0', providers: ['coinbase', 'coingecko', 'defillama', 'fred', 'yahoo'] });
   if (url.pathname === '/api/market') return json(snapshot);
   if (url.pathname === '/api/macro') return json({ ok: true, source: 'live', macro: { vix: 22.4 } });
   if (url.pathname === '/api/forecast/SPY') return json({ ok: true, server: true, source: 'live', forecast });
@@ -77,7 +79,7 @@ await wait(350);
 
 assert(document.querySelector('#data-source').hidden === false, 'live badge visible');
 assert(document.querySelector('#data-source-label').textContent.includes('Live'), 'live badge label');
-assert(document.querySelector('#sidebar-source').textContent.includes('Yahoo'), 'sidebar source');
+assert(document.querySelector('#sidebar-source').textContent.includes('Multi-source'), 'sidebar source');
 assert(document.querySelector('#refresh-data').hidden === false, 'refresh button visible');
 assert(document.querySelectorAll('#market-table tbody tr[data-symbol]').length === 26, 'market rows after hydrate');
 assert(document.querySelectorAll('#ticker-strip .ticker-item').length === 7, 'ticker after hydrate');

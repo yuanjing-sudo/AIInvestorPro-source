@@ -755,7 +755,7 @@
             <li><strong>Storage:</strong> <code>localStorage</code> for portfolio, alerts and theme. Clearing site data resets it.</li>
             <li><strong>Offline:</strong> a service worker caches the app shell and all modules.</li>
             <li><strong>Charts:</strong> canvas, no charting dependency.</li>
-            <li><strong>Data:</strong> 26 assets with OHLCV, fundamentals, macro and sentiment. Static hosts use the deterministic local feed; Cloudflare Workers hydrate live Yahoo chart data and run forecasts server-side.</li>
+            <li><strong>Data:</strong> 26 assets with OHLCV, fundamentals, macro and sentiment. Static hosts use the deterministic local feed; Cloudflare Workers hydrate a multi-source live feed (Yahoo, Coinbase, CoinGecko, DefiLlama, FRED) and run forecasts server-side.</li>
           </ul>
           <h2>Architecture</h2>
           <p class="muted">
@@ -777,17 +777,18 @@
           <div class="metric-cell"><span>Market</span><strong>/api/market</strong><small>Live snapshot + fallback</small></div>
           <div class="metric-cell"><span>Quote</span><strong>/api/quote/:symbol</strong><small>OHLCV + profile</small></div>
           <div class="metric-cell"><span>Forecast</span><strong>/api/forecast/:symbol</strong><small>Server-side ensemble</small></div>
-          <div class="metric-cell"><span>Macro</span><strong>/api/macro</strong><small>Rates, VIX, dollar, oil</small></div>
+          <div class="metric-cell"><span>Macro</span><strong>/api/macro</strong><small>FRED rates + market proxies</small></div>
         </div>
-        <p class="muted small" style="margin-top:12px">Without the Worker, the same build stays fully functional as an offline-first static PWA.</p>
+        <p class="muted small" style="margin-top:12px">A source catalog is available at <code>/api/sources</code>. Optional CoinCap and CoinMarketCap adapters activate when their API keys are configured. Bloomberg, Investing.com and Traders Union do not expose free public market-data APIs and are documented as unavailable. Without the Worker, the same build stays fully functional as an offline-first static PWA.</p>
       </article>
 
       <article class="card disclaimer">
         <h2>Scope and limitations</h2>
         <p>
           The bundled/static market data is synthetic and intended for demonstration, testing and UI evaluation.
-          In Cloudflare Workers mode, prices and macro proxies come from the unofficial Yahoo Finance chart API
-          and may be delayed or incomplete; fundamentals and headlines remain synthetic. Nothing here is investment
+          In Cloudflare Workers mode, equities/ETFs come from the unofficial Yahoo Finance chart API, crypto from
+          Coinbase/CoinGecko/DefiLlama, and macro from FRED plus Yahoo proxies; data may be delayed or incomplete.
+          Fundamentals and headlines remain synthetic. Nothing here is investment
           advice. Backtest results are sensitive to costs, slippage, survivorship and the chosen sample; a positive
           historical result does not imply future performance.
         </p>

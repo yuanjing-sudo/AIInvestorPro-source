@@ -1,5 +1,5 @@
 /* InvestorKit service worker: offline-first for the app shell and analytics. */
-const CACHE = 'investor-kit-v4';
+const CACHE = 'investor-kit-v5';
 const ASSETS = [
   './',
   './index.html',
