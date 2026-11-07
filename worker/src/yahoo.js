@@ -43,7 +43,7 @@ export function parseChart(payload, requestedSymbol = '') {
     const volume = finite(quote.volume?.[index], 0);
     const date = new Date(timestamps[index] * 1000);
     candles.push({
-      date: date.toISOString(),
+      date,
       dateString: isoDate(date),
       open: round(open),
       high: round(Math.max(high, open, close)),
