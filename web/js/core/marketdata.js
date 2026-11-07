@@ -309,16 +309,18 @@ export function sentimentSummary(items) {
   };
 }
 
-export function dataQuality(candles) {
+export function dataQuality(candles, synthetic = true) {
   if (!candles.length) {
     return {
       rows: 0, first: null, last: null, spanYears: 0, missing: 0, duplicates: 0,
-      gaps: 0, completeness: 0, synthetic: true, barsPerYear: 0,
+      gaps: 0, completeness: 0, synthetic, barsPerYear: 0,
     };
   }
   const first = candles[0].date;
   const last = candles[candles.length - 1].date;
-  const spanYears = (last - first) / (365.25 * 24 * 3600 * 1000);
+  const firstDate = first instanceof Date ? first : new Date(first);
+  const lastDate = last instanceof Date ? last : new Date(last);
+  const spanYears = (lastDate - firstDate) / (365.25 * 24 * 3600 * 1000);
   let missing = 0;
   let duplicates = 0;
   let gaps = 0;
@@ -332,7 +334,10 @@ export function dataQuality(candles) {
     if (seen.has(key)) duplicates += 1;
     seen.add(key);
     if (i > 0) {
-      const days = (candle.date - candles[i - 1].date) / 86_400_000;
+      const previous = candles[i - 1].date;
+      const currentDate = candle.date instanceof Date ? candle.date : new Date(candle.date);
+      const previousDate = previous instanceof Date ? previous : new Date(previous);
+      const days = (currentDate - previousDate) / 86_400_000;
       if (days > 5) gaps += 1;
     }
   }
@@ -347,7 +352,7 @@ export function dataQuality(candles) {
     duplicates,
     gaps,
     completeness,
-    synthetic: true,
+    synthetic,
     barsPerYear: spanYears > 0 ? candles.length / spanYears : 0,
   };
 }
@@ -366,16 +371,18 @@ export function performanceWindows(candles) {
   if (!candles.length) return [];
   const last = candles[candles.length - 1];
   const lastClose = last.close;
-  const yearStart = new Date(Date.UTC(last.date.getUTCFullYear(), 0, 1));
+  const lastDate = last.date instanceof Date ? last.date : new Date(last.date);
+  const yearStart = new Date(Date.UTC(lastDate.getUTCFullYear(), 0, 1));
+  const dateOf = (candle) => (candle.date instanceof Date ? candle.date : new Date(candle.date));
   return PERFORMANCE_WINDOWS.map(({ key, bars }) => {
     const reference = candles[Math.max(0, candles.length - 1 - bars)];
     const value = reference && reference.close > 0 ? lastClose / reference.close - 1 : 0;
     return { key, bars, value };
   }).concat({
     key: 'YTD',
-    bars: candles.findIndex((candle) => candle.date >= yearStart),
+    bars: candles.findIndex((candle) => dateOf(candle) >= yearStart),
     value: (() => {
-      const reference = candles.find((candle) => candle.date >= yearStart);
+      const reference = candles.find((candle) => dateOf(candle) >= yearStart);
       return reference && reference.close > 0 ? lastClose / reference.close - 1 : 0;
     })(),
   });

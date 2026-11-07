@@ -95,7 +95,7 @@ export async function buildSnapshot(symbols, options = {}) {
   for (const entry of loaded) {
     candleMap[entry.symbol] = entry.candles;
     quotes[entry.symbol] = entry.quote;
-    quality[entry.symbol] = dataQuality(entry.candles);
+    quality[entry.symbol] = dataQuality(entry.candles, entry.source !== 'yahoo');
     news[entry.symbol] = newsFor(entry.symbol, entry.candles.at(-1)?.date ?? null);
     fundamentals[entry.symbol] = fundamentalsFor(entry.symbol) ?? {
       symbol: entry.symbol,
@@ -133,7 +133,7 @@ export async function buildSnapshot(symbols, options = {}) {
 
 export async function buildSymbol(symbol, options = {}) {
   const entry = await loadSymbol(symbol, { ...options, range: options.range ?? '2y' });
-  const quality = dataQuality(entry.candles);
+  const quality = dataQuality(entry.candles, entry.source !== 'yahoo');
   const items = newsFor(symbol, entry.candles.at(-1)?.date ?? null);
   return {
     ok: true,
@@ -202,7 +202,7 @@ export async function buildForecastPayload(symbol, params = {}) {
     symbol,
     warning: entry.warning,
     quote: entry.quote,
-    quality: dataQuality(entry.candles),
+    quality: dataQuality(entry.candles, entry.source !== 'yahoo'),
     forecast,
   };
 }
