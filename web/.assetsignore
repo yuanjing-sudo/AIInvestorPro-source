@@ -1,0 +1,10 @@
+# Cloudflare Workers static assets: only publish the app shell.
+.assetsignore
+tests/
+scripts/
+node_modules/
+package.json
+package-lock.json
+server.mjs
+README.md
+.gitignore

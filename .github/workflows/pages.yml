@@ -58,6 +58,7 @@ jobs:
             --exclude server.mjs \
             --exclude README.md \
             --exclude .gitignore \
+            --exclude .assetsignore \
             web/ _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
