@@ -80,6 +80,7 @@ One Worker serves this `web/` directory and exposes live JSON endpoints:
 
 ```text
 /api/health
+/api/sources
 /api/market?symbols=SPY,QQQ&range=2y
 /api/quote/SPY
 /api/forecast/SPY?horizon=21&simulations=2000&seed=7
@@ -94,10 +95,14 @@ npx wrangler deploy
 ```
 
 The client probes `/api/health` on boot. When the Worker is present it hydrates
-live Yahoo chart data, requests forecasts server-side and shows a **Live · Yahoo**
-badge. When the API is absent (GitHub Pages, file server, offline), the same
-build uses the local synthetic feed with no visible failure. The service worker
-never caches `/api/*` responses.
+a multi-source live feed — Yahoo Finance for equities/ETFs, Coinbase/CoinGecko/
+DefiLlama for crypto and FRED for macro — requests forecasts server-side and
+shows a **Live · N sources** badge with the provider names in the sidebar. The
+source catalog is available at `/api/sources`, including optional CoinCap and
+CoinMarketCap adapters and providers that have no public API. When the API is
+absent (GitHub Pages, file server, offline), the same build uses the local
+synthetic feed with no visible failure. The service worker never caches `/api/*`
+responses.
 
 Automatic deployment is configured in
 [`../.github/workflows/cloudflare.yml`](../.github/workflows/cloudflare.yml).
@@ -132,9 +137,10 @@ The data foundation includes 26 assets across equities, ETFs, fixed income,
 commodities, digital assets and international exposure; three years of
 deterministic OHLCV; company/ETF fundamentals; a macro backdrop; and seeded news
 sentiment. Every line is generated locally and feeds the research terminal or the
-forecast model's context tilt. On Cloudflare Workers, prices, candles and macro
-proxies hydrate from Yahoo Finance server-side, while fundamentals, news and the
-quality audit remain deterministic unless a licensed provider is added.
+forecast model's context tilt. On Cloudflare Workers, prices and candles hydrate
+from Yahoo Finance (equities/ETFs) and Coinbase/CoinGecko/DefiLlama (crypto);
+macro hydrates from FRED plus Yahoo proxies. Fundamentals, news and the quality
+audit remain deterministic unless a licensed provider is added.
 
 Everything is computed locally in the static build. Portfolio, alerts and theme
 are stored in `localStorage`; clearing site data resets them. The Worker API is
@@ -180,9 +186,11 @@ web/
 
 ## Using real market data
 
-The optional Cloudflare Worker already implements a server-side Yahoo Finance
-adapter and runs the forecast engine there. The browser detects it via
-`/api/health`; no configuration is needed.
+The optional Cloudflare Worker already implements a multi-source server-side
+feed (Yahoo Finance, Coinbase, CoinGecko, DefiLlama and FRED) and runs the
+forecast engine there. The browser detects it via `/api/health`; no configuration
+is needed. Optional CoinCap and CoinMarketCap keys can be configured as Worker
+secrets, and `/api/sources` reports every provider's status.
 
 To replace it with a licensed provider, keep the response shape used by
 `worker/src/market.js` (`candles`, `quotes`, `fundamentals`, `news`, `quality`,
@@ -199,9 +207,10 @@ production, add a server-side proxy so provider API keys never reach the browser
 ## Limitations
 
 - In the static build, bundled prices, fundamentals, macro values and headlines
-  are synthetic and deterministic. In Workers mode, prices and macro proxies are
-  live Yahoo Finance data (unofficial, possibly delayed); fundamentals and news
-  remain synthetic.
+  are synthetic and deterministic. In Workers mode, equity/ETF prices come from
+  Yahoo Finance (unofficial, possibly delayed), crypto from public Coinbase/
+  CoinGecko/DefiLlama endpoints, and macro from FRED plus Yahoo proxies;
+  fundamentals and news remain synthetic.
 - Forecast intervals are model-based and assume the recent return distribution
   is informative. They cannot anticipate regime breaks, gaps or corporate events.
 - The Worker API is unauthenticated and read-only; do not add private data to it

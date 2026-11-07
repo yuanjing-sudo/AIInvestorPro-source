@@ -3,7 +3,7 @@
 
 import {
   UNIVERSE, state, quotes, candleMap, $, $$, redrawCharts, toast,
-  escapeHtml, dateShort, formatSignedPercent, signClass, hydrateMarket,
+  escapeHtml, dateShort, formatSignedPercent, signClass, hydrateMarket, sourceLabel,
 } from './shared.js';
 import { checkApi, fetchMacro, fetchMarket, live } from '../core/live.js';
 import { initDashboard, renderDashboard } from './dashboard.js';
@@ -152,13 +152,19 @@ function applyDataSource() {
     if (copy) copy.textContent = '26 assets · 3 years of OHLCV · fundamentals, macro and sentiment lines.';
     return;
   }
-  const source = live.source === 'live' ? 'Live · Yahoo' : live.source === 'mixed' ? 'Live · mixed' : 'Server · fallback';
+  const active = [...new Set(Object.values(live.sources ?? {}).filter((id) => id && id !== 'synthetic'))];
+  const names = active.map((id) => sourceLabel(id));
+  const source = !active.length
+    ? 'Server · fallback'
+    : live.source === 'live'
+      ? `Live · ${active.length} source${active.length === 1 ? '' : 's'}`
+      : `Live · mixed (${active.length} source${active.length === 1 ? '' : 's'})`;
   label.textContent = source;
   $('#refresh-data').hidden = false;
   const sidebarSource = $('#sidebar-source');
-  if (sidebarSource) sidebarSource.textContent = live.source === 'live' ? 'Yahoo · live' : 'Worker · mixed';
+  if (sidebarSource) sidebarSource.textContent = active.length && live.source === 'live' ? 'Multi-source · live' : active.length ? 'Worker · mixed' : 'Worker · fallback';
   const copy = $('#sidebar-copy');
-  if (copy) copy.textContent = `${live.provider}. Prices and candles are hydrated from the Worker API; the local feed remains the offline fallback.`;
+  if (copy) copy.textContent = `${live.provider}. Live sources: ${names.length ? names.join(', ') : 'server fallback'}. The local feed remains the offline fallback.`;
 }
 
 async function loadLiveData(options = {}) {
@@ -174,6 +180,8 @@ async function loadLiveData(options = {}) {
     if (macroPayload?.macro) snapshot.macro = macroPayload.macro;
     live.source = snapshot.source ?? 'live';
     live.provider = snapshot.provider ?? 'Cloudflare Worker API';
+    live.sources = snapshot.sources ?? {};
+    live.providerBreakdown = snapshot.providerBreakdown ?? {};
     live.lastUpdated = snapshot.generatedAt ?? new Date().toISOString();
     live.error = null;
     hydrateMarket(snapshot);
@@ -198,7 +206,7 @@ async function initLiveData() {
     return;
   }
   live.enabled = true;
-  live.provider = 'Yahoo Finance via Cloudflare Worker';
+  live.provider = 'Multi-source market data via Cloudflare Worker';
   live.source = 'mixed';
   applyDataSource();
   await loadLiveData();

@@ -14,6 +14,9 @@ export const live = {
   enabled: false,
   source: 'demo',
   provider: 'Deterministic local feed',
+  sources: {},
+  providers: [],
+  providerBreakdown: {},
   lastUpdated: null,
   error: null,
 };
@@ -52,6 +55,7 @@ export async function checkApi() {
     const payload = await request('/health', {}, 5000);
     if (payload?.live) {
       live.enabled = true;
+      live.providers = payload.providers ?? [];
       live.error = null;
       return payload;
     }

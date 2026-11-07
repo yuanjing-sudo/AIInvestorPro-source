@@ -2,8 +2,8 @@
 // correlation, sentiment and data-quality coverage for one asset.
 
 import {
-  UNIVERSE, quotes, candleMap, fundamentals, news, quality, macro, market,
-  assetsBySymbol, returnsBySymbol, state, $, escapeHtml, dateShort,
+  UNIVERSE, quotes, candleMap, fundamentals, news, quality, sources, macro, market,
+  assetsBySymbol, returnsBySymbol, state, $, escapeHtml, dateShort, sourceLabel,
   formatMoney, formatMoneyCompact, formatPercent, formatSignedPercent,
   formatNumber, formatCompact, signClass, makeChart, statCard, toast,
 } from './shared.js';
@@ -297,6 +297,6 @@ function renderQuality(row, percentile, vol) {
     cell('Bars / year', formatNumber(row.barsPerYear, 0)),
     cell('Price percentile', `${Math.round(percentile * 100)}%`),
     cell('Realized vol', formatPercent(vol, 1)),
-    cell('Source', 'Synthetic · local'),
+    cell('Source', row.synthetic ? 'Synthetic · local' : sourceLabel(sources[state.research.symbol] ?? 'server')),
   ].join('');
 }

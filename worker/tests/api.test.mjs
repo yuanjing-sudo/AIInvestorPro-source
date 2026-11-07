@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker, { handleApi } from '../src/index.js';
-import { buildForecastPayload, buildSnapshot, resolveSymbols } from '../src/market.js';
+import { buildForecastPayload, buildSnapshot, buildSymbol, resolveSymbols } from '../src/market.js';
 
 test('health endpoint reports a live Worker runtime', async () => {
   const request = new Request('https://investor-kit.example/api/health');
@@ -12,6 +12,25 @@ test('health endpoint reports a live Worker runtime', async () => {
   assert.equal(payload.live, true);
   assert.equal(payload.runtime, 'cloudflare-workers');
   assert.ok(payload.assets >= 24);
+  assert.ok(payload.providers.includes('coinbase'));
+  assert.ok(payload.providers.includes('fred'));
+});
+
+test('sources endpoint lists active, optional and unavailable providers', async () => {
+  const request = new Request('https://investor-kit.example/api/sources');
+  const response = await handleApi(request, {}, new URL(request.url));
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const ids = payload.providers.map((provider) => provider.id);
+  assert.ok(ids.includes('coinbase'));
+  assert.ok(ids.includes('coingecko'));
+  assert.ok(ids.includes('defillama'));
+  assert.ok(ids.includes('fred'));
+  assert.ok(ids.includes('yahoo'));
+  assert.ok(ids.includes('bloomberg'));
+  assert.ok(ids.includes('investing'));
+  assert.ok(ids.includes('tradersunion'));
+  assert.equal(payload.providers.find((provider) => provider.id === 'bloomberg').status, 'unavailable');
 });
 
 test('universe endpoint returns the tradable demo universe', async () => {
@@ -74,6 +93,50 @@ test('snapshot bypasses per-symbol cache calls to stay under the free subrequest
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.caches = originalCaches;
+  }
+});
+
+test('crypto symbols prefer Coinbase and fall back to CoinGecko', async () => {
+  const originalFetch = globalThis.fetch;
+  const rows = [
+    [1_700_172_800, 102, 106, 103, 105, 1200],
+    [1_700_086_400, 100, 104, 101, 103, 1000],
+  ];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes('api.exchange.coinbase.com')) {
+      return new Response(JSON.stringify(rows), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (url.includes('api.coingecko.com')) {
+      return new Response(JSON.stringify({
+        prices: [[1_700_000_000_000, 100], [1_700_086_400_000, 105]],
+        total_volumes: [[1_700_000_000_000, 900], [1_700_086_400_000, 1100]],
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+  try {
+    const coinbase = await buildSymbol('BTC-USD', { range: '1mo' });
+    assert.equal(coinbase.source, 'coinbase');
+    assert.equal(coinbase.provider, 'Coinbase Exchange (server-side)');
+    assert.equal(coinbase.quality.synthetic, false);
+
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url.includes('api.exchange.coinbase.com')) throw new Error('Coinbase unavailable');
+      if (url.includes('api.coingecko.com')) {
+        return new Response(JSON.stringify({
+          prices: [[1_700_000_000_000, 100], [1_700_086_400_000, 105]],
+          total_volumes: [[1_700_000_000_000, 900], [1_700_086_400_000, 1100]],
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected URL ${url}`);
+    };
+    const coingecko = await buildSymbol('BTC-USD', { range: '1mo' });
+    assert.equal(coingecko.source, 'coingecko');
+    assert.equal(coingecko.provider, 'CoinGecko (server-side)');
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 

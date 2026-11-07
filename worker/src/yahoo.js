@@ -2,9 +2,10 @@
 // Only public, unauthenticated chart endpoints are used. Every failure is
 // surfaced to the caller so the Worker can fall back to deterministic data.
 
+import { cachedJson } from './http.js';
+
 const CHART_BASE = 'https://query1.finance.yahoo.com/v8/finance/chart/';
 const SYMBOL_PATTERN = /^[A-Z0-9^.=_-]{1,24}$/;
-const UA = 'Mozilla/5.0 (compatible; InvestorKitPro/2.0; +https://github.com/yuanjing-sudo/AIInvestorPro-source)';
 
 export function normalizeSymbol(value) {
   const symbol = decodeURIComponent(String(value ?? '')).trim().toUpperCase();
@@ -91,43 +92,6 @@ export function parseChart(payload, requestedSymbol = '') {
   };
 }
 
-function cacheKey(url) {
-  return new Request(url, { method: 'GET', headers: { accept: 'application/json' } });
-}
-
-async function cachedJson(url, ttl, useCache = true) {
-  const edgeCache = useCache && typeof caches !== 'undefined' ? caches.default : null;
-  const key = cacheKey(url);
-  if (edgeCache) {
-    try {
-      const hit = await edgeCache.match(key);
-      if (hit) return hit.json();
-    } catch {
-      // Continue with a network request if the edge cache is unavailable.
-    }
-  }
-  const response = await fetch(url, {
-    headers: { accept: 'application/json', 'user-agent': UA },
-    cf: { cacheTtl: ttl, cacheEverything: true },
-  });
-  if (!response.ok) throw new Error(`Yahoo responded ${response.status}`);
-  const text = await response.text();
-  if (!text) throw new Error('Yahoo returned an empty response');
-  if (edgeCache) {
-    try {
-      await edgeCache.put(key, new Response(text, {
-        headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': `public, max-age=${ttl}`,
-        },
-      }));
-    } catch {
-      // Cache writes are best-effort; a cache miss must never break the API.
-    }
-  }
-  return JSON.parse(text);
-}
-
 export async function fetchYahooChart(symbol, options = {}) {
   const normalized = normalizeSymbol(symbol);
   const range = options.range ?? '2y';
@@ -137,6 +101,10 @@ export async function fetchYahooChart(symbol, options = {}) {
   url.searchParams.set('interval', interval);
   url.searchParams.set('includePrePost', 'false');
   url.searchParams.set('events', 'div,splits');
-  const payload = await cachedJson(url.toString(), options.ttl ?? 300, options.cache !== false);
+  const payload = await cachedJson(url.toString(), {
+    ttl: options.ttl ?? 300,
+    cache: options.cache !== false,
+    label: 'Yahoo',
+  });
   return parseChart(payload, normalized);
 }
