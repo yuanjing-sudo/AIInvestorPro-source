@@ -6,6 +6,10 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/pages.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:
@@ -35,6 +39,7 @@ jobs:
 
   deploy:
     needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -7,6 +7,11 @@ on:
       - 'web/**'
       - 'worker/**'
       - '.github/workflows/cloudflare.yml'
+  pull_request:
+    paths:
+      - 'web/**'
+      - 'worker/**'
+      - '.github/workflows/cloudflare.yml'
   workflow_dispatch:
 
 permissions:
@@ -36,6 +41,7 @@ jobs:
 
   deploy:
     needs: validate
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
