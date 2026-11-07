@@ -106,7 +106,8 @@ enable it; otherwise the workflow tests the Worker and skips the deploy.
 
 Any static host works as well: Netlify, Cloudflare Pages, Vercel, S3, nginx or a
 USB stick. Upload the contents of `web/` (excluding `tests/`, `scripts/` and
-`node_modules/`).
+`node_modules/`). The Cloudflare Worker reads `web/.assetsignore`, so its public
+asset set excludes tests, scripts, server code and package metadata.
 
 ## Features
 
