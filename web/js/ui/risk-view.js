@@ -27,6 +27,13 @@ export function initRisk() {
   });
   renderRiskWeights();
   if (state.risk.result) renderRiskResult();
+  document.addEventListener('ik:market-updated', () => {
+    state.risk.result = null;
+    state.risk.stress = null;
+    const results = $('#risk-results');
+    if (results) results.hidden = true;
+    renderRiskWeights();
+  });
 }
 
 export function setAllocation(symbols, weightsPercent) {

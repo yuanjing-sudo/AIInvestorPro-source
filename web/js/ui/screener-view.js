@@ -22,6 +22,7 @@ export function initScreener() {
   });
 
   renderScreener();
+  document.addEventListener('ik:market-updated', renderScreener);
 }
 
 function applyFilters() {

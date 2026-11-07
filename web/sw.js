@@ -1,5 +1,5 @@
 /* InvestorKit service worker: offline-first for the app shell and analytics. */
-const CACHE = 'investor-kit-v3';
+const CACHE = 'investor-kit-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -20,6 +20,7 @@ const ASSETS = [
   './js/core/taxlots.js',
   './js/core/alerts.js',
   './js/core/forecast.js',
+  './js/core/live.js',
   './js/ui/charts.js',
   './js/ui/shared.js',
   './js/ui/dashboard.js',
@@ -53,6 +54,8 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // Never cache the Worker API: live quotes and forecasts must stay dynamic.
+  if (url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate') {
     event.respondWith(

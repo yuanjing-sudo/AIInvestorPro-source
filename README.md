@@ -18,6 +18,9 @@ local portfolio persistence.
 > * **InvestorKit Web** — an installable, offline-first PWA under [`web/`](web/README.md)
 >   that runs the same kind of analytics on Android, iPhone, iPad, Windows, macOS,
 >   Linux, ChromeOS and any modern browser.
+> * **InvestorKit Worker** — an optional Cloudflare Workers backend under
+>   [`worker/`](worker/README.md) that serves the PWA and exposes live, server-side
+>   market snapshots, macro proxies and forecast execution.
 >
 > Nothing from the original target was removed.
 
@@ -76,12 +79,20 @@ node server.mjs          # http://localhost:8080/
 npm install              # only for the JSDOM smoke test
 npm test                 # 100 numerical/unit tests
 npm run test:ui          # drives every tab in a DOM
+npm run test:live        # simulates the Worker API and verifies hydration
 npm run test:all
 ```
 
-The app works offline, needs no account, server, API key or network, and installs to an
-Android home screen (Chrome/Edge/Samsung Internet), an iPhone/iPad home screen (Safari
-Share → Add to Home Screen), or a desktop. Portfolio, alerts and theme are stored locally.
+The app works offline, needs no account, API key or network for the static build, and
+installs to an Android home screen (Chrome/Edge/Samsung Internet), an iPhone/iPad home
+screen (Safari Share → Add to Home Screen), or a desktop. Portfolio, alerts and theme
+are stored locally.
+
+An optional Cloudflare Worker deployment adds a real server side: the Worker serves the
+same PWA and exposes `/api/market`, `/api/quote/:symbol`, `/api/forecast/:symbol` and
+`/api/macro`. In that mode the browser hydrates live Yahoo Finance chart data and requests
+forecasts from the server; if the API is unavailable it silently falls back to the
+deterministic local feed. See [`worker/README.md`](worker/README.md).
 
 GitHub Pages deployment is automated by
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml), using **GitHub Actions** as
@@ -91,6 +102,22 @@ the Pages source:
 https://yuanjing-sudo.github.io/AIInvestorPro-source/
 ```
 
+### Cloudflare Workers (dynamic / server-side)
+
+```bash
+cd worker
+npm install
+npx wrangler login
+npx wrangler deploy
+```
+
+The Worker uses Cloudflare's static-assets binding for `web/` and runs the API on the
+same origin. For automatic deployment, add `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit)
+and `CLOUDFLARE_ACCOUNT_ID` to the repository's Actions secrets. The
+[`cloudflare.yml`](.github/workflows/cloudflare.yml) workflow tests the Worker on every
+push and deploys when those secrets are configured. Without them it skips the deploy and
+the static Pages site remains available.
+
 Features: dashboard, price/chart indicators, 9-strategy backtester, constrained portfolio
 optimizer with efficient frontier, correlated Monte Carlo risk lab, screener, portfolio
 ledger with FIFO/LIFO/HIFO/LOFO tax-lot comparison, price/RSI/volume alerts, a research
@@ -98,7 +125,8 @@ terminal (multi-horizon scorecard, relative strength, fundamentals, macro, corre
 sentiment and data-quality audit) and a forecast studio (drift/Holt/ridge ensemble,
 50/80/95% simulation cones, scenario matrix, walk-forward diagnostics and feature
 attribution). A command palette, market ribbon, responsive sidebar and mobile navigation
-make the same build usable on phones, tablets and desktops.
+make the same build usable on phones, tablets and desktops. On Cloudflare Workers the
+same UI gains live data and server-side forecasts, with an explicit source badge.
 
 ### Layout
 
@@ -109,7 +137,9 @@ Sources/InvestorKitDemo/   Runnable command-line demo
 Tests/InvestorKitTests/    XCTest coverage for indicators, analytics, risk, trading,
                            screener, persistence, and export
 web/                       Installable cross-platform PWA and its tests
-docs/AUDIT.md              Prioritized audit and remediation record.github/workflows/         Swift CI and GitHub Pages deployment
+worker/                    Optional Cloudflare Worker: static hosting + live API
+docs/AUDIT.md              Prioritized audit and remediation record
+.github/workflows/          Swift CI, GitHub Pages and Cloudflare deployment
 ```
 
 ## Using the library
@@ -141,7 +171,8 @@ if let report = result?.report {
    - a real QP solver for the optimizer,
    - a portfolio-level (multi-asset) backtester,
    - split/dividend aware tax-lot accounting and wash-sale handling,
-   - provider adapters for a licensed market-data feed.
+   - provider adapters for a licensed market-data feed (the Cloudflare Worker
+     currently adapts the unofficial Yahoo chart endpoint).
 5. **Harden the Yahoo client**: response validation, cancellation propagation, metrics,
    and a documented fallback when the unofficial endpoint changes.
 

@@ -8,9 +8,11 @@ import {
 } from './shared.js';
 import { buildForecast } from '../core/forecast.js';
 import { sentimentSummary } from '../core/marketdata.js';
+import { fetchServerForecast, isLive } from '../core/live.js';
 
 let forecastChart = null;
 let lastForecast = null;
+let requestId = 0;
 
 export function initForecast() {
   const select = $('#fc-symbol');
@@ -32,6 +34,9 @@ export function initForecast() {
   });
   select.addEventListener('change', () => runForecast());
   renderForecast(lastForecast);
+  document.addEventListener('ik:market-updated', () => {
+    if (state.tab === 'forecast' || !lastForecast?.server) runForecast();
+  });
   runForecast();
 }
 
@@ -44,31 +49,50 @@ export function runForecast(options = {}) {
   const seed = Number($('#fc-seed').value) || 7;
   const history = Number($('#fc-history').value) || 180;
   state.forecast = { symbol, horizon, mode, simulations, seed, history };
-  $('#fc-readiness').textContent = 'Computing…';
+  $('#fc-readiness').textContent = isLive() ? 'Requesting server model…' : 'Computing…';
   $('#fc-readiness').className = 'pill warn';
   button?.classList.add('is-busy');
-  window.setTimeout(() => {
+  const currentRequest = ++requestId;
+  window.setTimeout(async () => {
     try {
-      const result = buildForecast(candleMap[symbol], {
-        symbol, horizon, mode, simulations, seed, history,
-        context: {
-          fundamentals: fundamentals[symbol],
-          macro,
-          sentiment: sentimentSummary(news[symbol] ?? []),
-        },
-      });
+      let result = null;
+      let server = false;
+      if (isLive()) {
+        try {
+          const payload = await fetchServerForecast(symbol, { horizon, mode, simulations, seed, history });
+          result = payload.forecast;
+          result.server = true;
+          result.provider = payload.provider;
+          result.serverSource = payload.source;
+          server = true;
+        } catch {
+          // Fall back to the local engine if the Worker cannot reach upstream.
+        }
+      }
+      if (!result) {
+        result = buildForecast(candleMap[symbol], {
+          symbol, horizon, mode, simulations, seed, history,
+          context: {
+            fundamentals: fundamentals[symbol],
+            macro,
+            sentiment: sentimentSummary(news[symbol] ?? []),
+          },
+        });
+      }
+      if (currentRequest !== requestId) return;
       lastForecast = result;
       if (!result) throw new Error('Not enough history for this asset.');
       renderForecast(result);
-      $('#fc-readiness').textContent = 'Forecast ready';
+      $('#fc-readiness').textContent = server ? 'Server model ready' : 'Forecast ready';
       $('#fc-readiness').className = 'pill good';
-      if (options.announce) toast(`${symbol} forecast updated · ${horizon} trading days`);
+      if (options.announce) toast(`${symbol} forecast updated${server ? ' · server-side model' : ''} · ${horizon} trading days`);
     } catch (error) {
+      if (currentRequest !== requestId) return;
       $('#fc-readiness').textContent = 'Model error';
       $('#fc-readiness').className = 'pill bad';
       toast(error?.message ?? 'Forecast failed');
     } finally {
-      button?.classList.remove('is-busy');
+      if (currentRequest === requestId) button?.classList.remove('is-busy');
     }
   }, 20);
 }
@@ -94,7 +118,7 @@ function renderForecast(forecast) {
   ].join('');
 
   $('#fc-chart-title').textContent = `${symbol} · ${horizon}-day forecast cone`;
-  $('#fc-chart-subtitle').textContent = `History ${forecast.historyLength} bars · ${forecast.simulation.simulations.toLocaleString()} simulated paths · ${forecast.mode === 'ensemble' ? 'walk-forward ensemble' : forecast.mode}`;
+  $('#fc-chart-subtitle').textContent = `History ${forecast.historyLength} bars · ${forecast.simulation.simulations.toLocaleString()} simulated paths · ${forecast.mode === 'ensemble' ? 'walk-forward ensemble' : forecast.mode}${forecast.server ? ' · server-side' : ' · local'}`;
 
   renderChart(forecast);
   renderBandLegend();
