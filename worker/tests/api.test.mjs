@@ -43,6 +43,40 @@ test('symbol resolution drops unknown and duplicate values', () => {
   assert.deepEqual(symbols, ['SPY', 'AAPL']);
 });
 
+test('snapshot bypasses per-symbol cache calls to stay under the free subrequest limit', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  let cacheCalls = 0;
+  let fetchCalls = 0;
+  const timestamps = [1_700_000_000, 1_700_086_400, 1_700_172_800];
+  const payload = {
+    chart: { result: [{
+      meta: { symbol: 'SPY', currency: 'USD', regularMarketPrice: 103 },
+      timestamp: timestamps,
+      indicators: { quote: [{ open: [100, 101, 102], high: [102, 104, 105], low: [99, 100, 101], close: [101, 103, 104], volume: [1, 2, 3] }] },
+    }] },
+  };
+  globalThis.caches = {
+    default: {
+      match: async () => { cacheCalls += 1; return undefined; },
+      put: async () => { cacheCalls += 1; },
+    },
+  };
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const snapshot = await buildSnapshot(['SPY', 'QQQ'], { range: '1mo' });
+    assert.equal(snapshot.ok, true);
+    assert.equal(fetchCalls, 2);
+    assert.equal(cacheCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.caches = originalCaches;
+  }
+});
+
 test('snapshot falls back to deterministic data when Yahoo is unavailable', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error('network disabled in test'); };

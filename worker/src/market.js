@@ -59,6 +59,7 @@ async function loadSymbol(symbol, options = {}) {
       range,
       interval: options.interval ?? '1d',
       ttl: options.ttl ?? 300,
+      cache: options.cache,
     });
     return {
       symbol,
@@ -83,7 +84,10 @@ async function loadSymbol(symbol, options = {}) {
 
 export async function buildSnapshot(symbols, options = {}) {
   const requested = symbols.length ? symbols : ALLOWED_SYMBOLS;
-  const loaded = await Promise.all(requested.map((symbol) => loadSymbol(symbol, options)));
+  // A full snapshot fans out to one Yahoo request per symbol. Bypass the
+  // per-symbol edge-cache read/write here so the request stays inside the
+  // Workers Free plan's 50-subrequest budget. Individual endpoints still cache.
+  const loaded = await Promise.all(requested.map((symbol) => loadSymbol(symbol, { ...options, cache: false })));
   const candleMap = {};
   const quotes = {};
   const fundamentals = {};
