@@ -39,7 +39,7 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -58,6 +58,7 @@ jobs:
             --exclude server.mjs \
             --exclude README.md \
             --exclude .gitignore \
+            --exclude .assetsignore \
             web/ _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

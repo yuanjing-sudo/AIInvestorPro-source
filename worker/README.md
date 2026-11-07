@@ -124,3 +124,5 @@ to `env.ASSETS.fetch(request)`.
   theme remain in the browser's `localStorage`.
 - Yahoo is unofficial. For production, put a licensed data provider behind the
   same `buildSnapshot` / `buildSymbol` boundary.
+- `web/.assetsignore` keeps tests, scripts and package metadata out of the public
+  asset set. Wrangler publishes only the app shell and static modules.
