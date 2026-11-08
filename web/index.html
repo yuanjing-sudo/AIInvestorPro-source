@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="InvestorKit Pro: multi-asset research, forecasting, backtesting, risk and portfolio analytics. Installable on Android, iOS, desktop and any modern browser; works offline.">
+  <meta name="description" content="InvestorKit Pro: multi-asset research, forecasting, backtesting, risk and portfolio analytics with a free generative AI analyst. Installable on Android, iOS, desktop and any modern browser; works offline.">
   <meta name="theme-color" content="#05080f">
   <meta name="color-scheme" content="dark light">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -65,6 +65,9 @@
         </button>
         <button class="tab" role="tab" aria-selected="false" id="nav-forecast" aria-controls="tab-forecast" data-tab="forecast">
           <span class="nav-icon" aria-hidden="true">◇</span><span>Forecast</span>
+        </button>
+        <button class="tab" role="tab" aria-selected="false" id="nav-ai" aria-controls="tab-ai" data-tab="ai">
+          <span class="nav-icon" aria-hidden="true">✦</span><span>AI Analyst</span>
         </button>
 
         <p class="nav-label">Workbench</p>
@@ -380,6 +383,61 @@
         <article class="card disclaimer">
           <h2>How to read this</h2>
           <p>Forecasts are probability distributions, not price targets. The ensemble combines three simple models and reports its own walk-forward error. Synthetic demo data understates real-world regime breaks, gaps and survivorship bias. Nothing here is investment advice.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- AI Analyst -->
+    <section class="tab-panel" id="tab-ai" role="tabpanel" aria-labelledby="nav-ai" hidden>
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">Generative intelligence</p>
+          <h1>AI Analyst</h1>
+          <p class="muted">Grounded research briefs and chat through Cloudflare Workers AI. The model sees live quote, performance, macro, sentiment, news and data-quality context.</p>
+        </div>
+        <div class="ai-status-row">
+          <span class="pill" id="ai-status-pill">Checking…</span>
+          <span class="pill good" id="ai-model-badge" title="Model resolved by the Worker">Workers AI</span>
+        </div>
+      </div>
+
+      <div class="grid two ai-layout">
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <h2>Generative research brief</h2>
+              <p class="muted">A structured view generated on the server, not a rule-based template</p>
+            </div>
+            <span class="pill">LLM</span>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>Asset</span>
+              <select id="ai-symbol"></select>
+            </label>
+            <div class="form-actions">
+              <button class="button primary" id="ai-generate" type="button">Generate analysis</button>
+            </div>
+          </div>
+          <div id="ai-analysis" class="ai-analysis" aria-live="polite"></div>
+        </article>
+
+        <article class="card ai-chat-card">
+          <div class="card-head">
+            <div>
+              <h2>Ask the analyst</h2>
+              <p class="muted">Chat about the selected asset, macro or portfolio risk</p>
+            </div>
+            <button class="button ghost small" id="ai-clear" type="button">Clear</button>
+          </div>
+          <div class="ai-suggestions" id="ai-suggestions"></div>
+          <div class="ai-chat" id="ai-chat" aria-live="polite"></div>
+          <form id="ai-chat-form" class="ai-chat-form">
+            <label class="sr-only" for="ai-input">Message the AI analyst</label>
+            <textarea id="ai-input" rows="2" placeholder="Ask about SPY, rates, crypto, risk…" autocomplete="off"></textarea>
+            <button class="button primary" id="ai-send" type="submit">Send</button>
+          </form>
+          <p class="muted small ai-disclaimer">Generative AI can be wrong or incomplete. It is not personalized investment advice. Verify prices and material facts independently.</p>
         </article>
       </div>
     </section>
@@ -726,7 +784,7 @@
         <div>
           <p class="eyebrow">Platform</p>
           <h1>One app, every device</h1>
-          <p class="lede">InvestorKit is a standards-based progressive web app with an optional Cloudflare Worker backend. Static hosting works offline; Workers mode adds live server-side market data and forecast execution.</p>
+          <p class="lede">InvestorKit is a standards-based progressive web app with an optional Cloudflare Worker backend. Static hosting works offline; Workers mode adds live server-side market data, forecast execution and a free generative AI analyst.</p>
         </div>
       </div>
 
@@ -755,7 +813,7 @@
             <li><strong>Storage:</strong> <code>localStorage</code> for portfolio, alerts and theme. Clearing site data resets it.</li>
             <li><strong>Offline:</strong> a service worker caches the app shell and all modules.</li>
             <li><strong>Charts:</strong> canvas, no charting dependency.</li>
-            <li><strong>Data:</strong> 26 assets with OHLCV, fundamentals, macro and sentiment. Static hosts use the deterministic local feed; Cloudflare Workers hydrate a multi-source live feed (Yahoo, Coinbase, CoinGecko, DefiLlama, FRED) and run forecasts server-side.</li>
+            <li><strong>Data:</strong> 26 assets with OHLCV, fundamentals, macro and sentiment. Static hosts use the deterministic local feed; Cloudflare Workers hydrate a multi-source live feed (Yahoo, Coinbase, CoinGecko, DefiLlama, FRED), run forecasts server-side and add grounded generative AI through Workers AI.</li>
           </ul>
           <h2>Architecture</h2>
           <p class="muted">
@@ -778,8 +836,10 @@
           <div class="metric-cell"><span>Quote</span><strong>/api/quote/:symbol</strong><small>OHLCV + profile</small></div>
           <div class="metric-cell"><span>Forecast</span><strong>/api/forecast/:symbol</strong><small>Server-side ensemble</small></div>
           <div class="metric-cell"><span>Macro</span><strong>/api/macro</strong><small>FRED rates + market proxies</small></div>
+          <div class="metric-cell"><span>AI chat</span><strong>/api/ai/chat</strong><small>Grounded Workers AI</small></div>
+          <div class="metric-cell"><span>AI brief</span><strong>/api/ai/analysis/:symbol</strong><small>Generative research</small></div>
         </div>
-        <p class="muted small" style="margin-top:12px">A source catalog is available at <code>/api/sources</code>. Optional CoinCap and CoinMarketCap adapters activate when their API keys are configured. Bloomberg, Investing.com and Traders Union do not expose free public market-data APIs and are documented as unavailable. Without the Worker, the same build stays fully functional as an offline-first static PWA.</p>
+        <p class="muted small" style="margin-top:12px">A source catalog is available at <code>/api/sources</code> and AI status at <code>/api/ai/status</code>. The AI layer uses the free Cloudflare Workers AI binding with Llama 3.3 70B and automatic model fallback. Optional CoinCap and CoinMarketCap adapters activate when their API keys are configured. Bloomberg, Investing.com and Traders Union do not expose free public market-data APIs and are documented as unavailable. Without the Worker, the same build stays fully functional as an offline-first static PWA.</p>
       </article>
 
       <article class="card disclaimer">
@@ -788,8 +848,8 @@
           The bundled/static market data is synthetic and intended for demonstration, testing and UI evaluation.
           In Cloudflare Workers mode, equities/ETFs come from the unofficial Yahoo Finance chart API, crypto from
           Coinbase/CoinGecko/DefiLlama, and macro from FRED plus Yahoo proxies; data may be delayed or incomplete.
-          Fundamentals and headlines remain synthetic. Nothing here is investment
-          advice. Backtest results are sensitive to costs, slippage, survivorship and the chosen sample; a positive
+          Fundamentals and headlines remain synthetic. Generative AI is available only in Workers mode through
+          Cloudflare Workers AI and can be wrong or incomplete. Nothing here is investment advice. Backtest results are sensitive to costs, slippage, survivorship and the chosen sample; a positive
           historical result does not imply future performance.
         </p>
       </article>
@@ -807,6 +867,7 @@
     <button class="tab" data-tab="dashboard" aria-label="Dashboard"><span aria-hidden="true">◫</span><small>Home</small></button>
     <button class="tab" data-tab="research" aria-label="Research"><span aria-hidden="true">◎</span><small>Research</small></button>
     <button class="tab" data-tab="forecast" aria-label="Forecast"><span aria-hidden="true">◇</span><small>Forecast</small></button>
+    <button class="tab" data-tab="ai" aria-label="AI Analyst"><span aria-hidden="true">✦</span><small>AI</small></button>
     <button class="tab" data-tab="portfolio" aria-label="Portfolio"><span aria-hidden="true">▣</span><small>Portfolio</small></button>
     <button class="tab" id="mobile-more" data-command="open" aria-label="More sections"><span aria-hidden="true">⋯</span><small>More</small></button>
   </nav>
