@@ -120,6 +120,12 @@ function asPercent(value, digits = 2) {
   return Number.isFinite(value) ? `${(value * 100).toFixed(digits)}%` : null;
 }
 
+// Quote.changePercent is already expressed in percent (e.g. 0.3124 means
+// 0.3124%), unlike returns/volatility/yields which are decimal fractions.
+function asPercentValue(value, digits = 2) {
+  return Number.isFinite(value) ? `${value.toFixed(digits)}%` : null;
+}
+
 function compactFundamentals(value) {
   if (!value) return null;
   return {
@@ -168,7 +174,7 @@ export function summarizeMarketContext(payload) {
       currency: payload.meta?.currency ?? 'USD',
       price: quote.price ?? null,
       previousClose: quote.previousClose ?? null,
-      changePercent: asPercent(quote.changePercent),
+      changePercent: asPercentValue(quote.changePercent),
       high: quote.high ?? null,
       low: quote.low ?? null,
       volume: quote.volume ?? null,

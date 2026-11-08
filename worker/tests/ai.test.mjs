@@ -159,7 +159,7 @@ test('AI context formats percentages and flags synthetic fundamentals', () => {
     meta: { currency: 'USD' },
     source: 'live',
     provider: 'Yahoo Finance',
-    quote: { price: 129, previousClose: 128.6, changePercent: 0.0031, high: 130, low: 128, volume: 1_000_000, asOf: '2026-11-06' },
+    quote: { price: 129, previousClose: 128.6, changePercent: 0.3124, high: 130, low: 128, volume: 1_000_000, asOf: '2026-11-06' },
     candles,
     quality: { rows: 30, spanYears: 0.12, completeness: 1, gaps: 0, synthetic: false },
     fundamentals: { dividendYield: 0.0286, analystUpside: 0.22, revenueGrowth: 0.08, profitMargin: 0.24 },
