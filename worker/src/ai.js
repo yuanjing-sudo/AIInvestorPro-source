@@ -116,30 +116,34 @@ export async function runAi(env, messages, options = {}) {
   throw error;
 }
 
+function asPercent(value, digits = 2) {
+  return Number.isFinite(value) ? `${(value * 100).toFixed(digits)}%` : null;
+}
+
 function compactFundamentals(value) {
   if (!value) return null;
   return {
     marketCap: value.marketCap ?? null,
     beta: value.beta ?? null,
     peRatio: value.peRatio ?? null,
-    dividendYield: value.dividendYield ?? null,
+    dividendYield: asPercent(value.dividendYield),
     analystTarget: value.analystTarget ?? null,
-    analystUpside: value.analystUpside ?? null,
+    analystUpside: asPercent(value.analystUpside),
     analystRating: value.analystRating ?? null,
-    revenueGrowth: value.revenueGrowth ?? null,
-    profitMargin: value.profitMargin ?? null,
+    revenueGrowth: asPercent(value.revenueGrowth),
+    profitMargin: asPercent(value.profitMargin),
   };
 }
 
 function compactMacro(value) {
   if (!value) return null;
   return {
-    yield10y: value.yield10y ?? null,
-    yield2y: value.yield2y ?? null,
-    yieldCurve: value.yieldCurve ?? null,
-    inflation: value.inflation ?? null,
-    unemployment: value.unemployment ?? null,
-    gdpGrowth: value.gdpGrowth ?? null,
+    yield10y: asPercent(value.yield10y),
+    yield2y: asPercent(value.yield2y),
+    yieldCurve: asPercent(value.yieldCurve),
+    inflation: asPercent(value.inflation),
+    unemployment: asPercent(value.unemployment),
+    gdpGrowth: asPercent(value.gdpGrowth),
     vix: value.vix ?? null,
     dollarIndex: value.dollarIndex ?? null,
     oil: value.oil ?? null,
@@ -161,9 +165,10 @@ export function summarizeMarketContext(payload) {
     source: payload.source ?? 'unknown',
     provider: payload.provider ?? 'unknown',
     quote: {
+      currency: payload.meta?.currency ?? 'USD',
       price: quote.price ?? null,
       previousClose: quote.previousClose ?? null,
-      changePercent: quote.changePercent ?? null,
+      changePercent: asPercent(quote.changePercent),
       high: quote.high ?? null,
       low: quote.low ?? null,
       volume: quote.volume ?? null,
@@ -175,8 +180,8 @@ export function summarizeMarketContext(payload) {
       gaps: quality.gaps ?? null,
       synthetic: quality.synthetic ?? null,
     },
-    performance: performanceWindows(candles).map((row) => ({ window: row.key, return: row.value })),
-    realizedVolatility21d: historicalVolatility(candles, 21),
+    performance: performanceWindows(candles).map((row) => ({ window: row.key, return: asPercent(row.value) })),
+    realizedVolatility21d: asPercent(historicalVolatility(candles, 21)),
     fundamentals: compactFundamentals(payload.fundamentals),
     macro: compactMacro(payload.macro),
     sentiment: payload.sentiment ?? null,
@@ -185,6 +190,11 @@ export function summarizeMarketContext(payload) {
       sentiment: item.sentiment,
       impact: item.impact,
     })),
+    dataNotes: [
+      'Percentages are formatted as percent strings; do not multiply them again.',
+      'Fundamentals and headlines in this build are synthetic demo data and may not be internally consistent with live prices or with each other.',
+      'Only the quote, candles, macro series and quality fields come from the live market-data adapters.',
+    ],
   };
 }
 
@@ -192,6 +202,8 @@ function systemPrompt() {
   return [
     'You are InvestorKit AI, a careful multi-asset research analyst embedded in a portfolio analytics app.',
     'Use only the supplied market context. Do not invent prices, fundamentals, headlines or macro data.',
+    'Percent fields are supplied as percent strings; do not rescale or multiply them again.',
+    'Fundamentals and headlines may be synthetic demo data; label them accordingly and flag inconsistencies instead of treating them as live facts.',
     'Separate observed facts from inference. Mention data source and data-quality limitations when relevant.',
     'Never guarantee returns, never present a trade as certain, and do not give personalized financial advice.',
     'If the context is insufficient, say what is missing instead of filling gaps.',
