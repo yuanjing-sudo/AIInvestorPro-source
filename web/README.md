@@ -38,7 +38,9 @@ The suite covers indicators, performance statistics, covariance/risk
 contributions, Monte Carlo determinism, optimizers, backtesting (including a
 no-lookahead check), screening, tax lots, alerts, the forecast ensemble and
 walk-forward diagnostics, market data/fundamentals/sentiment generation, the
-precache manifest, and live-mode hydration with a mocked Worker API.
+precache manifest, live-mode hydration with a mocked Worker API, the AI Analyst
+tab in the static fallback, and AI analysis/chat rendering with a mocked Worker
+AI response.
 
 ## Install on a device
 
@@ -85,6 +87,9 @@ One Worker serves this `web/` directory and exposes live JSON endpoints:
 /api/quote/SPY
 /api/forecast/SPY?horizon=21&simulations=2000&seed=7
 /api/macro
+/api/ai/status
+/api/ai/chat                 (POST)
+/api/ai/analysis/SPY         (POST)
 ```
 
 ```bash
@@ -103,6 +108,16 @@ CoinMarketCap adapters and providers that have no public API. When the API is
 absent (GitHub Pages, file server, offline), the same build uses the local
 synthetic feed with no visible failure. The service worker never caches `/api/*`
 responses.
+
+### AI Analyst
+
+Workers mode also enables the **AI Analyst** tab. It calls the Worker's
+`/api/ai/analysis/:symbol` and `/api/ai/chat` routes, which use the free
+Cloudflare Workers AI binding. The model receives a compact server-built context
+from the selected asset (quote, performance, volatility, fundamentals, macro,
+sentiment, news and data quality) and returns a structured brief or chat reply.
+No model API key is shipped to the browser. The static Pages build keeps the
+deterministic engine and explains that generative AI requires the Worker.
 
 Automatic deployment is configured in
 [`../.github/workflows/cloudflare.yml`](../.github/workflows/cloudflare.yml).
@@ -174,6 +189,7 @@ web/
     dashboard.js           Dashboard view
     research-view.js       Research terminal and data-quality audit
     forecast-view.js       Forecast studio and diagnostics
+    ai-view.js             Generative AI briefs and grounded chat
     backtest-view.js       Backtest form and output
     optimize-view.js       Optimizer and frontier
     risk-view.js           Risk lab
@@ -187,10 +203,12 @@ web/
 ## Using real market data
 
 The optional Cloudflare Worker already implements a multi-source server-side
-feed (Yahoo Finance, Coinbase, CoinGecko, DefiLlama and FRED) and runs the
-forecast engine there. The browser detects it via `/api/health`; no configuration
-is needed. Optional CoinCap and CoinMarketCap keys can be configured as Worker
-secrets, and `/api/sources` reports every provider's status.
+feed (Yahoo Finance, Coinbase, CoinGecko, DefiLlama and FRED), runs the forecast
+engine there and provides generative AI through the free Workers AI binding. The
+browser detects it via `/api/health`; no configuration is needed. Optional
+CoinCap and CoinMarketCap keys can be configured as Worker secrets, and
+`/api/sources` reports every market-data provider's status. AI provider/model
+status is available at `/api/ai/status`.
 
 To replace it with a licensed provider, keep the response shape used by
 `worker/src/market.js` (`candles`, `quotes`, `fundamentals`, `news`, `quality`,
@@ -211,6 +229,9 @@ production, add a server-side proxy so provider API keys never reach the browser
   Yahoo Finance (unofficial, possibly delayed), crypto from public Coinbase/
   CoinGecko/DefiLlama endpoints, and macro from FRED plus Yahoo proxies;
   fundamentals and news remain synthetic.
+- Generative AI requires the Cloudflare Workers deployment. The static Pages
+  build deliberately has no browser-side LLM or API key. AI output can be wrong,
+  may omit material information and is not personalized investment advice.
 - Forecast intervals are model-based and assume the recent return distribution
   is informative. They cannot anticipate regime breaks, gaps or corporate events.
 - The Worker API is unauthenticated and read-only; do not add private data to it

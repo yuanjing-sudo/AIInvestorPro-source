@@ -705,6 +705,70 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
 .mobile-nav { display: none; }
 
 /* ------------------------------------------------------------------ */
+/* AI Analyst                                                          */
+/* ------------------------------------------------------------------ */
+.ai-status-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.ai-layout { align-items: start; }
+.ai-analysis { display: grid; gap: 13px; min-height: 220px; align-content: start; }
+.ai-analysis-head { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.ai-analysis-head h3 { grid-column: 1 / -1; }
+.ai-analysis h3 { margin: 2px 0 0; font-size: 1.05rem; line-height: 1.45; letter-spacing: -0.01em; }
+.ai-analysis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.ai-analysis-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.ai-analysis-section {
+  background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 11px 12px; min-width: 0;
+}
+.ai-analysis-section > span {
+  display: block; color: var(--faint); font-size: 0.66rem; font-weight: 800;
+  letter-spacing: 0.09em; text-transform: uppercase; margin-bottom: 5px;
+}
+.ai-analysis-section p, .ai-analysis-section li {
+  color: var(--muted); font-size: 0.81rem; line-height: 1.55;
+}
+.ai-analysis-section p { margin: 0; }
+.ai-analysis-section ul { margin: 0; padding-left: 17px; display: grid; gap: 4px; }
+.ai-empty {
+  display: grid; gap: 7px; padding: 22px; border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm); background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+}
+.ai-empty strong { font-size: 0.92rem; }
+.ai-empty p { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.55; }
+.ai-chat-card { display: flex; flex-direction: column; min-height: 520px; }
+.ai-chat {
+  display: grid; gap: 9px; align-content: start; overflow-y: auto;
+  max-height: 430px; min-height: 230px; padding: 4px 2px 8px;
+  scrollbar-width: thin;
+}
+.ai-message {
+  justify-self: start; max-width: 94%; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 13px 13px 13px 4px;
+  background: var(--panel-2);
+}
+.ai-message.user {
+  justify-self: end; border-radius: 13px 13px 4px 13px;
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+}
+.ai-message-role {
+  display: block; color: var(--faint); font-size: 0.62rem; font-weight: 800;
+  letter-spacing: 0.09em; text-transform: uppercase; margin-bottom: 4px;
+}
+.ai-message p { margin: 0; color: var(--text); font-size: 0.84rem; line-height: 1.55; overflow-wrap: anywhere; }
+.ai-message.assistant p { color: var(--muted); }
+.ai-thinking p { color: var(--faint); font-style: italic; }
+.ai-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
+.ai-suggestion {
+  appearance: none; border: 1px solid var(--border); background: var(--panel-2);
+  color: var(--muted); border-radius: 999px; padding: 5px 9px;
+  font: inherit; font-size: 0.68rem; cursor: pointer; text-align: left;
+}
+.ai-suggestion:hover { border-color: var(--accent); color: var(--text); }
+.ai-chat-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; margin-top: auto; padding-top: 10px; }
+.ai-chat-form textarea { resize: vertical; min-height: 46px; max-height: 130px; line-height: 1.45; }
+.ai-disclaimer { margin: 8px 0 0; }
+
+/* ------------------------------------------------------------------ */
 /* Responsive                                                          */
 /* ------------------------------------------------------------------ */
 @media (max-width: 1180px) {
@@ -716,7 +780,7 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { display: none; }
   .mobile-nav {
-    display: grid; grid-template-columns: repeat(5, 1fr);
+    display: grid; grid-template-columns: repeat(6, 1fr);
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 70;
     padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
     background: color-mix(in srgb, var(--bg) 88%, transparent);
@@ -750,6 +814,11 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
   .app-main { padding: 12px; gap: 12px; }
   .tab-panel { gap: 12px; }
   .card { padding: 14px; }
+  .ai-analysis-grid, .ai-analysis-columns { grid-template-columns: 1fr; }
+  .ai-chat-card { min-height: 460px; }
+  .ai-chat-form { grid-template-columns: 1fr; }
+  .ai-chat-form .button { width: 100%; }
+  .ai-status-row { justify-content: flex-start; }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .stat-value { font-size: 1.2rem; }
   .section-head { align-items: flex-start; }

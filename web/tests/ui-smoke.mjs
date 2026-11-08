@@ -101,6 +101,13 @@ assert(document.querySelectorAll('#fc-diagnostics .metric-cell').length === 8, '
 assert(document.querySelectorAll('#fc-scenarios .scenario-row').length === 3, 'forecast scenarios');
 assert(document.querySelector('#fc-chart').width > 0, 'forecast chart sized');
 
+// AI Analyst (static build: clear Worker/AI requirement, no crash)
+document.querySelector('[data-tab="ai"]').click();
+await wait(40);
+assert(document.querySelector('#tab-ai').hidden === false, 'AI tab opens');
+assert(document.querySelector('#ai-analysis').textContent.includes('Cloudflare Workers'), 'AI tab explains Worker requirement');
+assert(document.querySelector('#ai-symbol').options.length === 26, 'AI symbol selector populated');
+
 // Command palette
 document.querySelector('#command-open').click();
 await wait(30);
@@ -194,4 +201,4 @@ if (errors.length) {
   throw new Error(`Browser errors: ${errors.map((error) => error?.stack ?? error).join('\n')}`);
 }
 
-console.log('UI smoke passed: dashboard, research, forecast, backtest, optimize, risk, screener, portfolio, tax lots, alerts, command palette, navigation.');
+console.log('UI smoke passed: dashboard, research, forecast, AI analyst, backtest, optimize, risk, screener, portfolio, tax lots, alerts, command palette, navigation.');

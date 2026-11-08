@@ -17,6 +17,7 @@ export const live = {
   sources: {},
   providers: [],
   providerBreakdown: {},
+  ai: { enabled: false, provider: 'Cloudflare Workers AI', model: null },
   lastUpdated: null,
   error: null,
 };
@@ -25,16 +26,20 @@ export function isLive() {
   return live.enabled;
 }
 
-async function request(path, params = {}, timeout = 20000) {
+async function request(path, params = {}, timeout = 20000, options = {}) {
   const url = new URL(`${API_BASE}${path}`, window.location.origin);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
   }
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeout);
+  const headers = { accept: 'application/json' };
+  if (options.body !== undefined) headers['content-type'] = 'application/json';
   try {
     const response = await fetch(url, {
-      headers: { accept: 'application/json' },
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
       signal: controller.signal,
       cache: 'no-store',
     });
@@ -56,6 +61,7 @@ export async function checkApi() {
     if (payload?.live) {
       live.enabled = true;
       live.providers = payload.providers ?? [];
+      live.ai = payload.ai ?? live.ai;
       live.error = null;
       return payload;
     }
@@ -92,4 +98,22 @@ export async function fetchServerForecast(symbol, parameters = {}) {
     mode: parameters.mode,
     history: parameters.history,
   }, 30000);
+}
+
+export async function aiStatus() {
+  return request('/ai/status', {}, 8000);
+}
+
+export async function aiAnalysis(symbol) {
+  return request(`/ai/analysis/${encodeURIComponent(symbol)}`, {}, 60000, {
+    method: 'POST',
+    body: {},
+  });
+}
+
+export async function aiChat(messages, options = {}) {
+  return request('/ai/chat', {}, 60000, {
+    method: 'POST',
+    body: { messages, symbol: options.symbol },
+  });
 }

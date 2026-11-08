@@ -15,9 +15,10 @@ import { initPortfolio } from './portfolio-view.js';
 import { initAlerts } from './alerts-view.js';
 import { initResearch, renderResearch } from './research-view.js';
 import { initForecast } from './forecast-view.js';
+import { initAI, renderAI } from './ai-view.js';
 
 const TABS = [
-  'dashboard', 'research', 'forecast', 'backtest', 'optimize',
+  'dashboard', 'research', 'forecast', 'ai', 'backtest', 'optimize',
   'risk', 'screener', 'portfolio', 'alerts', 'platform',
 ];
 
@@ -25,6 +26,7 @@ const PAGE_META = {
   dashboard: { label: 'Dashboard', hint: 'Portfolio overview and market board' },
   research: { label: 'Research terminal', hint: 'Fundamentals, macro, correlation, sentiment' },
   forecast: { label: 'Forecast studio', hint: 'Ensemble model with confidence intervals' },
+  ai: { label: 'AI Analyst', hint: 'Generative research briefs and chat' },
   backtest: { label: 'Backtest', hint: 'Strategy research with costs and slippage' },
   optimize: { label: 'Optimize', hint: 'Constrained portfolio construction' },
   risk: { label: 'Risk lab', hint: 'Monte Carlo, VaR and stress scenarios' },
@@ -55,6 +57,7 @@ function setTab(tab, options = {}) {
   }
   if (target === 'dashboard') renderDashboard();
   if (target === 'research') renderResearch();
+  if (target === 'ai') renderAI();
   if (options.updateUrl !== false) {
     try {
       const url = new URL(window.location.href);
@@ -436,6 +439,7 @@ function boot() {
   initAlerts();
   initResearch();
   initForecast();
+  initAI();
 
   const requested = new URLSearchParams(window.location.search).get('tab');
   setTab(TABS.includes(requested) ? requested : 'dashboard', { updateUrl: false });

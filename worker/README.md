@@ -3,7 +3,8 @@
 This directory turns InvestorKit Pro from a purely static PWA into an optional
 dynamic, server-side deployment on **Cloudflare Workers**. One Worker serves the
 existing `web/` app shell through Cloudflare's static-assets binding and exposes
-a small JSON API for live market data, macro proxies and server-side forecasts.
+a small JSON API for live market data, macro proxies, server-side forecasts and
+generative AI analysis through the free Cloudflare Workers AI binding.
 
 The static GitHub Pages deployment still works unchanged. The browser calls
 `/api/health` on boot; if it is unavailable, every view keeps using the
@@ -20,6 +21,9 @@ deterministic local feed.
 | `GET /api/quote/SPY?range=2y` | One asset with OHLCV, profile, fundamentals, sentiment and quality | 60s |
 | `GET /api/forecast/SPY?horizon=21&simulations=2000&seed=7` | Runs the shared forecast ensemble on the server | 120s |
 | `GET /api/macro` | FRED yields/CPI/unemployment/GDP plus VIX, dollar, oil and gold proxies | 300s |
+| `GET /api/ai/status` | AI provider, model registry and binding status | 60s |
+| `POST /api/ai/chat` | Grounded chat with the selected asset context | none |
+| `POST /api/ai/analysis/:symbol` | Generative structured research brief for one asset | none |
 
 The Worker imports the same `web/js/core/forecast.js`, `marketdata.js`,
 `indicators.js` and related modules used by the browser. There is no second
@@ -38,6 +42,9 @@ implementation of the numerical engine.
 4. The browser hydrates its shared market objects, re-renders every view and
    shows a **Live · N sources** badge with the provider names in the sidebar.
    The service worker never caches `/api/*`.
+5. The **AI Analyst** tab calls the Worker's AI routes. The Worker builds a
+   compact context from the same symbol payload and sends it to Cloudflare
+   Workers AI. The browser never receives an API key or calls a model directly.
 
 No API key is required for the default chain. Yahoo is an unofficial endpoint:
 it may be delayed, rate-limited or changed by Yahoo. Coinbase, CoinGecko,
@@ -64,6 +71,28 @@ The live catalog is also returned by `GET /api/sources`, including the reason a
 provider is optional or unavailable. `providerBreakdown` in `/api/market` shows
 how many symbols each provider served.
 
+### Generative AI provider
+
+| Provider | Used for | Status | Notes |
+| --- | --- | --- | --- |
+| Cloudflare Workers AI | Grounded research briefs and chat | Active | Native `AI` binding; free daily allocation; no browser API key |
+| `@cf/meta/llama-3.3-70b-instruct-fp8-fast` | Primary generative model | Active | 70B open-weights model; 24k-token context |
+| `@cf/meta/llama-3.1-8b-instruct-fp8-fast` | Fallback | Active | Used automatically if the primary model fails |
+| `@cf/qwen/qwen3-30b-a3b-fp8` | Last-resort fallback | Active | Smaller/faster model for degraded service |
+
+The AI layer is in [`src/ai.js`](src/ai.js). It:
+
+* validates and caps chat messages (16 messages, 4,000 characters each);
+* builds analysis/chat prompts from a compact server-side market context;
+* asks the model for JSON and normalizes/validates the response;
+* tries the primary, fallback and fast models in order;
+* returns provider/model metadata and keeps all model calls server-side.
+
+The free Workers AI allocation is 10,000 Neurons/day on the Free plan. A typical
+analysis or chat turn uses a small fraction of that. The free allocation can
+change; check the Cloudflare dashboard. AI output is educational, can be wrong
+and is not personalized investment advice.
+
 ## Local development
 
 ```bash
@@ -84,8 +113,9 @@ npm test
 ```
 
 They cover symbol validation, Yahoo/Coinbase/CoinGecko/DefiLlama/FRED parsing,
-optional keyed providers, routing, the asset binding fallback, provider selection
-and the deterministic fallback when upstream is unreachable.
+optional keyed providers, routing, the asset binding fallback, provider selection,
+the deterministic fallback when upstream is unreachable, AI status/chat/analysis,
+JSON parsing, model fallback and message validation.
 
 ## Deploy
 
@@ -134,9 +164,17 @@ the existing GitHub Pages deployment remains live.
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
+  },
+  "ai": {
+    "binding": "AI"
   }
 }
 ```
+
+The `ai` binding is what makes Workers AI free and keyless inside the Worker.
+The account must have Workers AI available; no extra secret is required. The
+deploy token needs normal Workers Scripts edit permission, and the Cloudflare
+account must be allowed to use Workers AI.
 
 `run_worker_first: ["/api/*"]` sends API requests through the Worker before the
 SPA fallback, while ordinary asset requests are served directly by Cloudflare
@@ -162,10 +200,19 @@ Optional secrets:
   forecast and macro requests still use the edge cache.
 - Crypto forecast requests can use up to four Coinbase chunks for a three-year
   range. That is still well inside the free-plan budget for one symbol.
-- `GET /api/sources` reports which providers are active, optional or unavailable.
-  Bloomberg, Investing.com and Traders Union are intentionally not scraped.
-- `GET` and `OPTIONS` are the only accepted methods. CORS is open for read-only
-  use; add authentication before exposing private data or write operations.
+- `GET /api/sources` reports which market-data providers are active, optional or
+  unavailable. Bloomberg, Investing.com and Traders Union are intentionally not
+  scraped.
+- `GET /api/ai/status` reports whether the Workers AI binding is configured.
+  The AI routes are stateless: conversations are not stored by the Worker. The
+  client keeps the current chat in memory only.
+- Workers AI has a free daily Neuron allocation. If it is exhausted or the
+  binding is missing, AI routes return a clear error and the rest of the app
+  continues to work with deterministic analytics.
+- Market endpoints accept `GET`; AI chat/analysis accept `POST`; `OPTIONS` is
+  handled for CORS. CORS is open for read-only market use and stateless AI calls;
+  add authentication and per-user rate limiting before exposing private data,
+  storing conversations or adding write operations.
 - The API is read-only and holds no user portfolio data. Portfolio, alerts and
   theme remain in the browser's `localStorage`.
 - Yahoo is unofficial. For production, put a licensed data provider behind the

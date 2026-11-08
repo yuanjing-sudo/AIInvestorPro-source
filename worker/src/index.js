@@ -10,6 +10,7 @@ import {
   buildSymbol, requireSymbol, resolveSymbols,
 } from './market.js';
 import { UNIVERSE } from '../../web/js/core/marketdata.js';
+import { aiStatus, chatWithAi, generateAnalysis, readJsonBody } from './ai.js';
 
 const VERSION = '2.0.0';
 const RANGE_VALUES = new Set(['1mo', '3mo', '6mo', '1y', '2y', '3y']);
@@ -17,7 +18,7 @@ const RANGE_VALUES = new Set(['1mo', '3mo', '6mo', '1y', '2y', '3y']);
 function corsHeaders() {
   return {
     'access-control-allow-origin': '*',
-    'access-control-allow-methods': 'GET, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
     'access-control-allow-headers': 'content-type, accept',
     'access-control-max-age': '86400',
   };
@@ -54,13 +55,13 @@ async function handleApi(request, env, url) {
   if (request.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders() });
   }
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    return json({ ok: false, error: 'Method not allowed' }, 405);
-  }
-
   const parts = url.pathname.split('/').filter(Boolean);
   // parts: ['api', 'market'] or ['api', 'forecast', 'SPY']
   const route = parts[1] ?? '';
+  const aiPath = url.pathname.startsWith('/api/ai/');
+  if (request.method !== 'GET' && request.method !== 'HEAD' && !(aiPath && request.method === 'POST')) {
+    return json({ ok: false, error: 'Method not allowed' }, 405);
+  }
 
   if (route === 'health') {
     return json({
@@ -71,8 +72,9 @@ async function handleApi(request, env, url) {
       live: true,
       assets: UNIVERSE.length,
       providers: buildSourceCatalog().providers.filter((provider) => provider.status === 'active').map((provider) => provider.id),
+      ai: aiStatus(env),
       now: new Date().toISOString(),
-      endpoints: ['/api/health', '/api/sources', '/api/market', '/api/quote/:symbol', '/api/forecast/:symbol', '/api/macro'],
+      endpoints: ['/api/health', '/api/sources', '/api/market', '/api/quote/:symbol', '/api/forecast/:symbol', '/api/macro', '/api/ai/status', '/api/ai/chat', '/api/ai/analysis/:symbol'],
     }, 200, 30);
   }
 
@@ -112,6 +114,31 @@ async function handleApi(request, env, url) {
   if (route === 'macro') {
     const payload = await buildMacro(env);
     return json(payload, 200, 300);
+  }
+
+  if (route === 'ai') {
+    const action = parts[2] ?? '';
+    if (action === 'status') {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        return json({ ok: false, error: 'Method not allowed' }, 405);
+      }
+      return json(aiStatus(env), 200, 60);
+    }
+    if (request.method !== 'POST') {
+      return json({ ok: false, error: 'Method not allowed' }, 405);
+    }
+    if (action === 'chat') {
+      const body = await readJsonBody(request);
+      const payload = await chatWithAi(env, body.messages, { symbol: body.symbol });
+      return json(payload, 200, 0);
+    }
+    if (action === 'analysis') {
+      const symbol = requireSymbol(parts[3] ?? '');
+      const body = await readJsonBody(request);
+      const payload = await generateAnalysis(env, symbol, body);
+      return json(payload, 200, 0);
+    }
+    return json({ ok: false, error: 'Unknown AI route' }, 404);
   }
 
   return json({ ok: false, error: 'Unknown API route' }, 404);
