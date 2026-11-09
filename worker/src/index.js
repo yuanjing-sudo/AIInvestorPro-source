@@ -10,7 +10,8 @@ import {
   buildSymbol, requireSymbol, resolveSymbols,
 } from './market.js';
 import { UNIVERSE } from '../../web/js/core/marketdata.js';
-import { aiStatus, chatWithAi, generateAnalysis, readJsonBody } from './ai.js';
+import { aiStatus, chatWithAi, generateAnalysis, generateInsights, readJsonBody } from './ai.js';
+import { searchAssets } from './search.js';
 
 const VERSION = '2.0.0';
 const RANGE_VALUES = new Set(['1mo', '3mo', '6mo', '1y', '2y', '3y']);
@@ -74,7 +75,7 @@ async function handleApi(request, env, url) {
       providers: buildSourceCatalog().providers.filter((provider) => provider.status === 'active').map((provider) => provider.id),
       ai: aiStatus(env),
       now: new Date().toISOString(),
-      endpoints: ['/api/health', '/api/sources', '/api/market', '/api/quote/:symbol', '/api/forecast/:symbol', '/api/macro', '/api/ai/status', '/api/ai/chat', '/api/ai/analysis/:symbol'],
+      endpoints: ['/api/health', '/api/sources', '/api/search', '/api/market', '/api/quote/:symbol', '/api/forecast/:symbol', '/api/macro', '/api/ai/status', '/api/ai/chat', '/api/ai/analysis/:symbol', '/api/ai/insights/:symbol'],
     }, 200, 30);
   }
 
@@ -84,6 +85,11 @@ async function handleApi(request, env, url) {
 
   if (route === 'sources') {
     return json(buildSourceCatalog(), 200, 3600);
+  }
+
+  if (route === 'search') {
+    const payload = await searchAssets(url.searchParams.get('q') ?? '', { env });
+    return json(payload, 200, 300);
   }
 
   if (route === 'market') {
@@ -136,6 +142,12 @@ async function handleApi(request, env, url) {
       const symbol = requireSymbol(parts[3] ?? '');
       const body = await readJsonBody(request);
       const payload = await generateAnalysis(env, symbol, body);
+      return json(payload, 200, 0);
+    }
+    if (action === 'insights') {
+      const symbol = requireSymbol(parts[3] ?? '');
+      const body = await readJsonBody(request);
+      const payload = await generateInsights(env, symbol, body);
       return json(payload, 200, 0);
     }
     return json({ ok: false, error: 'Unknown AI route' }, 404);

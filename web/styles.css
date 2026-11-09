@@ -545,6 +545,34 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
 /* ------------------------------------------------------------------ */
 /* Research                                                            */
 /* ------------------------------------------------------------------ */
+.asset-search { display: flex; gap: 6px; align-items: center; flex: 1 1 260px; min-width: 220px; }
+.asset-search input { min-width: 0; }
+.asset-search .button { flex-shrink: 0; }
+
+.annotation-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; }
+.annotation-chip {
+  display: inline-flex; align-items: center; gap: 7px; max-width: 100%;
+  border: 1px solid color-mix(in srgb, var(--annotation-color, #f6c85f) 46%, var(--border));
+  border-left: 3px solid var(--annotation-color, #f6c85f);
+  border-radius: 9px; background: var(--panel-2); padding: 6px 8px;
+  font-size: 0.72rem; color: var(--text);
+}
+.annotation-chip small { color: var(--faint); font-family: var(--mono); font-size: 0.62rem; }
+.annotation-remove {
+  appearance: none; border: 0; background: transparent; color: var(--faint);
+  font: inherit; font-size: 1rem; line-height: 1; cursor: pointer; padding: 0 2px;
+}
+.annotation-remove:hover { color: var(--danger); }
+
+.indicator-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; }
+.indicator-cell {
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px;
+  background: var(--panel-2); min-width: 0;
+}
+.indicator-cell span { display: block; color: var(--faint); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; }
+.indicator-cell strong { display: block; font-family: var(--mono); font-size: 0.9rem; margin-top: 3px; font-weight: 650; }
+.indicator-cell small { display: block; color: var(--faint); font-size: 0.64rem; margin-top: 2px; }
+
 .macro-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
 .macro-cell {
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 11px;
@@ -732,6 +760,20 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
   display: grid; gap: 7px; padding: 22px; border: 1px dashed var(--border-strong);
   border-radius: var(--radius-sm); background: color-mix(in srgb, var(--panel-2) 72%, transparent);
 }
+.ai-insights { display: grid; gap: 13px; min-height: 160px; align-content: start; }
+.ai-insight-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ai-insight-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; }
+.ai-insight-cell {
+  border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px;
+  background: var(--panel-2); min-width: 0;
+}
+.ai-insight-cell span { display: block; color: var(--faint); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; }
+.ai-insight-cell strong { display: block; font-family: var(--mono); font-size: 0.88rem; margin-top: 3px; font-weight: 650; }
+.ai-insight-cell small { display: block; color: var(--faint); font-size: 0.64rem; margin-top: 2px; }
+.ai-insight-columns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.ai-insight-columns .ai-analysis-section { min-width: 0; }
+.ai-insight-forecast { display: grid; gap: 7px; }
+.ai-insight-forecast .chart-wrap { min-height: 220px; }
 .ai-empty strong { font-size: 0.92rem; }
 .ai-empty p { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.55; }
 .ai-chat-card { display: flex; flex-direction: column; min-height: 520px; }
@@ -814,8 +856,9 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
   .app-main { padding: 12px; gap: 12px; }
   .tab-panel { gap: 12px; }
   .card { padding: 14px; }
-  .ai-analysis-grid, .ai-analysis-columns { grid-template-columns: 1fr; }
+  .ai-analysis-grid, .ai-analysis-columns, .ai-insight-columns { grid-template-columns: 1fr; }
   .ai-chat-card { min-height: 460px; }
+  .asset-search { flex-basis: 100%; }
   .ai-chat-form { grid-template-columns: 1fr; }
   .ai-chat-form .button { width: 100%; }
   .ai-status-row { justify-content: flex-start; }

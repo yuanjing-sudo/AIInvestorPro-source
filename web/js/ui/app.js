@@ -2,10 +2,11 @@
 // service worker and boot.
 
 import {
-  UNIVERSE, state, quotes, candleMap, $, $$, redrawCharts, toast,
-  escapeHtml, dateShort, formatSignedPercent, signClass, hydrateMarket, sourceLabel,
+  UNIVERSE, CORE_SYMBOLS, assetsBySymbol, state, quotes, candleMap, $, $$, redrawCharts, toast,
+  escapeHtml, dateShort, formatSignedPercent, signClass, hydrateMarket, hydrateSymbol,
+  fillSymbolSelect, sourceLabel,
 } from './shared.js';
-import { checkApi, fetchMacro, fetchMarket, live } from '../core/live.js';
+import { checkApi, fetchMacro, fetchMarket, fetchSymbol, searchAssets, live } from '../core/live.js';
 import { initDashboard, renderDashboard } from './dashboard.js';
 import { initBacktest } from './backtest-view.js';
 import { initOptimize } from './optimize-view.js';
@@ -41,6 +42,10 @@ const TICKER_SYMBOLS = ['SPY', 'QQQ', 'BTC-USD', 'NVDA', 'GLD', 'TLT', 'AAPL'];
 let installPrompt = null;
 let commandActive = 0;
 let commandItems = [];
+let remoteCommandResults = [];
+let commandSearchTimer = null;
+let commandSearchRequest = 0;
+let commandLoading = false;
 
 function setTab(tab, options = {}) {
   const target = TABS.includes(tab) ? tab : 'dashboard';
@@ -175,7 +180,7 @@ async function loadLiveData(options = {}) {
   const button = $('#refresh-data');
   button?.classList.add('is-busy');
   try {
-    const symbols = UNIVERSE.map((asset) => asset.symbol);
+    const symbols = CORE_SYMBOLS;
     const [snapshot, macroPayload] = await Promise.all([
       fetchMarket(symbols, { range: '2y' }),
       fetchMacro().catch(() => null),
@@ -296,15 +301,69 @@ function initOffline() {
   }
 }
 
+
+function refreshSymbolSelects() {
+  const pairs = [
+    ['#dashboard-symbol', state.symbol],
+    ['#research-symbol', state.research.symbol],
+    ['#fc-symbol', state.forecast.symbol],
+    ['#ai-symbol', $('#ai-symbol')?.value || state.research.symbol],
+    ['#bt-symbol', state.backtest.symbol],
+    ['#tx-symbol', $('#tx-symbol')?.value || 'AAPL'],
+    ['#tax-symbol', $('#tax-symbol')?.value || 'AAPL'],
+    ['#alert-symbol', $('#alert-symbol')?.value || 'AAPL'],
+  ];
+  for (const [selector, value] of pairs) {
+    const select = $(selector);
+    if (select) fillSymbolSelect(select, value);
+  }
+}
+
+async function loadAsset(symbol, label = '') {
+  const normalized = String(symbol ?? '').trim().toUpperCase();
+  if (!normalized) return false;
+  if (assetsBySymbol[normalized] && candleMap[normalized]?.length) {
+    state.symbol = normalized;
+    state.research.symbol = normalized;
+    state.forecast.symbol = normalized;
+    refreshSymbolSelects();
+    setTab('research');
+    toast(`${normalized} loaded in Research`);
+    return true;
+  }
+  if (!live.enabled) {
+    toast('Searching and loading arbitrary assets requires the Cloudflare Worker deployment.');
+    return false;
+  }
+  toast(`Loading ${normalized}${label ? ` · ${label}` : ''}…`);
+  try {
+    const payload = await fetchSymbol(normalized, { range: '2y' });
+    if (!hydrateSymbol(payload)) throw new Error('No usable candles');
+    state.symbol = normalized;
+    state.research.symbol = normalized;
+    state.forecast.symbol = normalized;
+    refreshSymbolSelects();
+    setTab('research');
+    toast(`${normalized} loaded · ${sourceLabel(payload.source)}`);
+    return true;
+  } catch (error) {
+    toast(`Could not load ${normalized}: ${error?.message ?? 'unknown error'}`);
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Command palette
 // ---------------------------------------------------------------------------
 
-function openCommand() {
+function openCommand(initialQuery = '') {
   const dialog = $('#command-palette');
   if (!dialog) return;
-  $('#command-input').value = '';
-  renderCommand('');
+  $('#command-input').value = initialQuery;
+  remoteCommandResults = [];
+  commandLoading = false;
+  renderCommand(initialQuery);
+  if (initialQuery.trim()) scheduleCommandSearch(initialQuery);
   if (typeof dialog.showModal === 'function') {
     if (!dialog.open) dialog.showModal();
   } else {
@@ -334,10 +393,60 @@ function commandEntries(query) {
     label: `${asset.symbol} · ${asset.name}`,
     hint: `${asset.sector} · ${asset.kind}`,
   }));
-  return [...pages, ...assets].filter((item) => {
+  const remote = normalized ? remoteCommandResults.map((item) => ({
+    type: 'asset',
+    symbol: item.symbol,
+    label: `${item.symbol} · ${item.name}`,
+    hint: `${item.exchangeDisplay || item.exchange || item.type} · ${item.type}`,
+    remote: true,
+  })) : [];
+  const seen = new Set();
+  const merged = [...assets, ...remote].filter((item) => {
+    if (seen.has(item.symbol)) return false;
+    seen.add(item.symbol);
+    return true;
+  });
+  const direct = normalized && /^[A-Z0-9^.=_-]{1,24}$/.test(query.trim().toUpperCase()) && !seen.has(query.trim().toUpperCase())
+    ? [{
+      type: 'asset',
+      symbol: query.trim().toUpperCase(),
+      label: `Load ${query.trim().toUpperCase()} directly`,
+      hint: 'Load ticker from Yahoo Finance',
+      direct: true,
+    }]
+    : [];
+  return [...pages, ...merged, ...direct].filter((item) => {
     if (!normalized) return true;
     return `${item.label} ${item.hint} ${item.symbol ?? ''}`.toLowerCase().includes(normalized);
-  }).slice(0, 28);
+  }).slice(0, 30);
+}
+
+function scheduleCommandSearch(query) {
+  window.clearTimeout(commandSearchTimer);
+  const normalized = query.trim();
+  remoteCommandResults = [];
+  if (!normalized || !live.enabled) {
+    commandLoading = false;
+    renderCommand(query);
+    return;
+  }
+  commandSearchTimer = window.setTimeout(async () => {
+    const request = ++commandSearchRequest;
+    commandLoading = true;
+    renderCommand(query);
+    try {
+      const payload = await searchAssets(normalized);
+      if (request !== commandSearchRequest) return;
+      remoteCommandResults = payload.results ?? [];
+    } catch {
+      if (request === commandSearchRequest) remoteCommandResults = [];
+    } finally {
+      if (request === commandSearchRequest) {
+        commandLoading = false;
+        renderCommand(query);
+      }
+    }
+  }, 220);
 }
 
 function renderCommand(query) {
@@ -346,7 +455,12 @@ function renderCommand(query) {
   commandItems = commandEntries(query);
   commandActive = Math.min(commandActive, Math.max(0, commandItems.length - 1));
   if (!commandItems.length) {
-    results.innerHTML = '<p class="empty-state" style="padding:18px">No matches. Try a ticker, sector or page.</p>';
+    const message = commandLoading
+      ? 'Searching Yahoo Finance…'
+      : live.enabled
+        ? 'No matches. Try a ticker, company name, ETF, index or crypto pair.'
+        : 'No local matches. Arbitrary asset search requires the Cloudflare Worker deployment.';
+    results.innerHTML = `<p class="empty-state" style="padding:18px">${message}</p>`;
     return;
   }
   let lastType = '';
@@ -362,23 +476,18 @@ function renderCommand(query) {
   }).join('');
 }
 
-function activateCommand(index) {
+async function activateCommand(index) {
   const item = commandItems[index];
   if (!item) return;
   closeCommand();
   if (item.type === 'page') setTab(item.tab);
-  if (item.type === 'asset') {
-    state.symbol = item.symbol;
-    state.research.symbol = item.symbol;
-    setTab('research');
-    toast(`${item.symbol} loaded in Research`);
-  }
+  if (item.type === 'asset') await loadAsset(item.symbol, item.remote ? item.label : '');
 }
 
 function initCommand() {
   const dialog = $('#command-palette');
   if (!dialog) return;
-  $('#command-open')?.addEventListener('click', openCommand);
+  $('#command-open')?.addEventListener('click', () => openCommand());
   $('#mobile-more')?.addEventListener('click', (event) => {
     event.preventDefault();
     openCommand();
@@ -386,6 +495,7 @@ function initCommand() {
   $('#command-input')?.addEventListener('input', (event) => {
     commandActive = 0;
     renderCommand(event.target.value);
+    scheduleCommandSearch(event.target.value);
   });
   $('#command-input')?.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -409,6 +519,10 @@ function initCommand() {
   dialog.addEventListener('click', (event) => {
     if (event.target === dialog) closeCommand();
   });
+  document.addEventListener('ik:open-search', (event) => {
+    openCommand(event.detail?.query ?? '');
+  });
+  document.addEventListener('ik:assets-updated', refreshSymbolSelects);
   document.addEventListener('keydown', (event) => {
     const modifier = event.metaKey || event.ctrlKey;
     if (modifier && event.key.toLowerCase() === 'k') {

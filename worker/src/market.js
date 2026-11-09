@@ -18,7 +18,6 @@ import { fetchCoinMarketCapChart } from './coinmarketcap.js';
 import { fetchFredSeries, latestValue, yearOverYear } from './fred.js';
 
 export const ALLOWED_SYMBOLS = UNIVERSE.map((asset) => asset.symbol);
-const ALLOWED = new Set(ALLOWED_SYMBOLS);
 
 const SOURCE_NAMES = {
   coinbase: 'Coinbase Exchange',
@@ -103,8 +102,13 @@ export function resolveSymbols(values) {
   const out = [];
   for (const value of raw) {
     if (!value) continue;
-    const symbol = normalizeSymbol(value);
-    if (!ALLOWED.has(symbol) || seen.has(symbol)) continue;
+    let symbol;
+    try {
+      symbol = normalizeSymbol(value);
+    } catch {
+      continue;
+    }
+    if (seen.has(symbol)) continue;
     seen.add(symbol);
     out.push(symbol);
     if (out.length >= 40) break;
@@ -112,22 +116,40 @@ export function resolveSymbols(values) {
   return out;
 }
 
+// Arbitrary Yahoo Finance symbols are allowed. normalizeSymbol enforces the
+// safe character set; unknown symbols still get deterministic fallback data if
+// every upstream provider rejects them.
 export function requireSymbol(value) {
-  const symbol = normalizeSymbol(value);
-  if (!ALLOWED.has(symbol)) {
-    const error = new Error(`Unknown symbol: ${symbol}`);
-    error.status = 404;
-    throw error;
-  }
-  return symbol;
+  return normalizeSymbol(value);
 }
 
-function assetFor(symbol) {
-  return findAsset(symbol) ?? {
+function inferKind(symbol) {
+  if (symbol.startsWith('^')) return 'index';
+  if (symbol.endsWith('=F')) return 'future';
+  if (symbol.endsWith('=X')) return 'forex';
+  if (/(?:-USD|-EUR|-GBP|-JPY|-USDT|-BTC|-ETH)$/.test(symbol)) return 'crypto';
+  return 'equity';
+}
+
+function inferSector(kind) {
+  if (kind === 'crypto') return 'Digital Assets';
+  if (kind === 'index') return 'Index';
+  if (kind === 'future') return 'Futures';
+  if (kind === 'forex') return 'Foreign Exchange';
+  return 'Custom';
+}
+
+function assetFor(symbol, meta = {}) {
+  const known = findAsset(symbol);
+  const kind = known?.kind ?? inferKind(symbol);
+  return {
+    ...(known ?? {}),
     symbol,
-    name: symbol,
-    sector: 'Custom',
-    kind: 'equity',
+    name: meta.longName ?? meta.shortName ?? known?.name ?? symbol,
+    sector: known?.sector ?? inferSector(kind),
+    kind,
+    exchange: meta.exchange ?? known?.exchange ?? '',
+    instrumentType: meta.instrumentType ?? known?.instrumentType ?? '',
   };
 }
 
@@ -177,6 +199,7 @@ async function loadSymbol(symbol, options = {}) {
       const chart = await load();
       return {
         symbol,
+        asset: assetFor(symbol, chart.meta),
         candles: chart.candles,
         quote: chart.quote,
         meta: chart.meta,
@@ -190,6 +213,7 @@ async function loadSymbol(symbol, options = {}) {
   const { candles } = generateCandles(symbol, { count });
   return {
     symbol,
+    asset: assetFor(symbol),
     candles,
     quote: quotesFromCandles(candles),
     meta: { longName: assetFor(symbol).name, currency: 'USD', exchange: 'Demo' },
@@ -218,16 +242,8 @@ export async function buildSnapshot(symbols, options = {}) {
     quotes[entry.symbol] = entry.quote;
     quality[entry.symbol] = dataQuality(entry.candles, entry.source === 'synthetic');
     news[entry.symbol] = newsFor(entry.symbol, entry.candles.at(-1)?.date ?? null);
-    fundamentals[entry.symbol] = fundamentalsFor(entry.symbol) ?? {
-      symbol: entry.symbol,
-      kind: 'equity',
-      marketCap: null,
-      beta: null,
-      analystTarget: null,
-      analystUpside: null,
-      analystRating: null,
-    };
-    assets.push(assetFor(entry.symbol));
+    fundamentals[entry.symbol] = fundamentalsForAny(entry.symbol, entry.asset);
+    assets.push(entry.asset ?? assetFor(entry.symbol, entry.meta));
     sources[entry.symbol] = entry.source;
     if (entry.warning) warnings.push(entry.warning);
   }
@@ -257,6 +273,45 @@ export async function buildSnapshot(symbols, options = {}) {
   };
 }
 
+function fundamentalsForAny(symbol, asset) {
+  const known = fundamentalsFor(symbol);
+  if (known) return known;
+  return {
+    symbol,
+    kind: asset?.kind ?? inferKind(symbol),
+    marketCap: null,
+    enterpriseValue: null,
+    sharesOutstanding: null,
+    pe: null,
+    forwardPE: null,
+    peg: null,
+    priceToSales: null,
+    priceToBook: null,
+    eps: null,
+    revenueGrowth: null,
+    earningsGrowth: null,
+    grossMargin: null,
+    operatingMargin: null,
+    profitMargin: null,
+    returnOnEquity: null,
+    debtToEquity: null,
+    currentRatio: null,
+    dividendYield: null,
+    payoutRatio: null,
+    beta: null,
+    analystRating: 'Not available',
+    analystTarget: null,
+    analystUpside: null,
+    analystCount: 0,
+    expenseRatio: null,
+    aum: null,
+    employees: null,
+    nextEarnings: null,
+    fiscalYearEnd: null,
+    asOf: null,
+  };
+}
+
 export async function buildSymbol(symbol, options = {}) {
   const entry = await loadSymbol(symbol, { ...options, range: options.range ?? '2y' });
   const quality = dataQuality(entry.candles, entry.source === 'synthetic');
@@ -266,11 +321,11 @@ export async function buildSymbol(symbol, options = {}) {
     source: entry.source,
     provider: `${sourceName(entry.source)} (server-side)`,
     generatedAt: new Date().toISOString(),
-    asset: assetFor(symbol),
+    asset: entry.asset ?? assetFor(symbol, entry.meta),
     meta: entry.meta,
     candles: entry.candles,
     quote: entry.quote,
-    fundamentals: fundamentalsFor(symbol),
+    fundamentals: fundamentalsForAny(symbol, entry.asset),
     news: items,
     sentiment: sentimentSummary(items),
     quality,
@@ -306,7 +361,7 @@ export async function buildForecastPayload(symbol, params = {}, options = {}) {
     mode,
     history,
     context: {
-      fundamentals: fundamentalsFor(symbol),
+      fundamentals: fundamentalsForAny(symbol, entry.asset),
       macro: macroSnapshot(entry.candles, entry.quote?.asOf ?? null),
       sentiment: sentimentSummary(items),
     },

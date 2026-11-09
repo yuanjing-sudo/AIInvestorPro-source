@@ -89,6 +89,12 @@ assert(document.querySelectorAll('#research-news .news-item').length >= 4, 'rese
 assert(document.querySelectorAll('#research-fundamentals tbody tr').length >= 8, 'fundamental rows');
 assert(document.querySelectorAll('#research-macro .macro-cell').length >= 8, 'macro cells');
 assert(document.querySelectorAll('#research-horizons .horizon-cell').length === 8, 'multi-horizon scorecard');
+assert(document.querySelector('#research-price-canvas').width > 0, 'research price chart sized');
+assert(document.querySelectorAll('#research-technical .indicator-cell').length >= 12, 'technical indicators rendered');
+assert(document.querySelector('#research-annotations').textContent.includes('No notes yet'), 'annotation empty state');
+click('#research-annotate');
+assert(document.querySelector('#research-annotate').getAttribute('aria-pressed') === 'true', 'annotation mode toggles');
+click('#research-annotate');
 
 // Forecast studio
 document.querySelector('[data-tab="forecast"]').click();
@@ -107,6 +113,8 @@ await wait(40);
 assert(document.querySelector('#tab-ai').hidden === false, 'AI tab opens');
 assert(document.querySelector('#ai-analysis').textContent.includes('Cloudflare Workers'), 'AI tab explains Worker requirement');
 assert(document.querySelector('#ai-symbol').options.length === 26, 'AI symbol selector populated');
+assert(document.querySelector('#ai-insights').textContent.includes('Worker'), 'AI insights explains Worker requirement');
+assert(document.querySelector('#ai-scan').disabled === true, 'AI scan disabled without Worker');
 
 // Command palette
 document.querySelector('#command-open').click();
@@ -116,6 +124,10 @@ document.querySelector('#command-input').value = 'NVDA';
 document.querySelector('#command-input').dispatchEvent(new window.Event('input', { bubbles: true }));
 await wait(20);
 assert(document.querySelector('#command-results').textContent.includes('NVDA'), 'command palette filters assets');
+document.querySelector('#command-input').value = 'COST';
+document.querySelector('#command-input').dispatchEvent(new window.Event('input', { bubbles: true }));
+await wait(20);
+assert(document.querySelector('#command-results').textContent.includes('Load COST directly'), 'command palette offers arbitrary ticker');
 
 // Backtest
 document.querySelector('[data-tab="backtest"]').click();
@@ -201,4 +213,4 @@ if (errors.length) {
   throw new Error(`Browser errors: ${errors.map((error) => error?.stack ?? error).join('\n')}`);
 }
 
-console.log('UI smoke passed: dashboard, research, forecast, AI analyst, backtest, optimize, risk, screener, portfolio, tax lots, alerts, command palette, navigation.');
+console.log('UI smoke passed: dashboard, research, forecast, AI analyst, backtest, optimize, risk, screener, portfolio, tax lots, alerts, command palette, navigation, annotations and technical scan.');
