@@ -13,7 +13,7 @@ import { UNIVERSE } from '../../web/js/core/marketdata.js';
 import { aiStatus, chatWithAi, generateAnalysis, generateInsights, readJsonBody } from './ai.js';
 import { searchAssets } from './search.js';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 const RANGE_VALUES = new Set(['1mo', '3mo', '6mo', '1y', '2y', '3y']);
 
 function corsHeaders() {
@@ -107,6 +107,7 @@ async function handleApi(request, env, url) {
     const payload = await buildSymbol(symbol, {
       range: rangeFrom(url.searchParams.get('range')),
       env,
+      deep: url.searchParams.get('deep') === '1',
     });
     return json(payload, 200, 60);
   }

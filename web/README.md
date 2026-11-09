@@ -28,7 +28,7 @@ No `npm install` is required to run the app itself.
 ```bash
 cd web
 npm install              # only needed for the JSDOM smoke test
-npm test                 # 100 numerical/unit tests
+npm test                 # 104 numerical/unit tests
 npm run test:ui          # drives every tab in a JSDOM browser smoke test
 npm run test:live        # simulates the Worker API and verifies live hydration
 npm run test:all         # all three
@@ -85,7 +85,7 @@ One Worker serves this `web/` directory and exposes live JSON endpoints:
 /api/sources
 /api/search?q=apple
 /api/market?symbols=SPY,QQQ&range=2y
-/api/quote/SPY
+/api/quote/SPY?deep=1
 /api/forecast/SPY?horizon=21&simulations=2000&seed=7
 /api/macro
 /api/ai/status
@@ -102,8 +102,9 @@ npx wrangler deploy
 ```
 
 The client probes `/api/health` on boot. When the Worker is present it hydrates
-a multi-source live feed — Yahoo Finance for equities/ETFs, Coinbase/CoinGecko/
-DefiLlama for crypto and FRED for macro — requests forecasts server-side and
+a multi-source live feed — Yahoo Finance for equities/ETFs and news, Coinbase/CoinGecko/
+DefiLlama for crypto, FRED for macro and SEC EDGAR for reported US company facts —
+requests forecasts server-side and
 shows a **Live · N sources** badge with the provider names in the sidebar. The
 source catalog is available at `/api/sources`, including optional CoinCap and
 CoinMarketCap adapters and providers that have no public API. When the API is
@@ -117,14 +118,17 @@ Workers mode also enables the **AI Analyst** tab. It calls the Worker's
 `/api/ai/analysis/:symbol`, `/api/ai/insights/:symbol` and `/api/ai/chat` routes,
 which use the free Cloudflare Workers AI binding. The model receives a compact
 server-built context from the selected asset (quote, performance, volatility,
-fundamentals, macro, sentiment, news and data quality) and returns a structured
-brief or chat reply. The **Technical, sentiment & simulation scan** adds 12
-deterministic indicators (RSI, MACD histogram, ATR, Bollinger position,
-stochastic, Williams %R, ROC, VWAP, OBV, Aroon, volume ratio and realized
-volatility), key support/resistance levels, a 21-day Monte Carlo forecast and a
-generative interpretation. No model API key is shipped to the browser. The
-static Pages build keeps the deterministic engine, technical indicators and
-forecast studio, and explains that generative AI requires the Worker.
+synthetic fundamentals, SEC reported facts, macro, sentiment, live or synthetic
+headlines and data quality) and returns a structured brief or chat reply. The
+**Technical, sentiment & simulation scan** adds 23 deterministic indicators
+(RSI, MACD histogram, ATR, Bollinger position, stochastic, Williams %R, ROC,
+VWAP, OBV, Aroon Up/Down, ADX/DI, MFI, CCI, Donchian, Keltner, Chaikin Money
+Flow, OBV slope, Bollinger bandwidth, regression slope, volume trend and realized
+volatility), each with a plain-English summary, plus key support/resistance
+levels, a 21-day Monte Carlo forecast and a generative interpretation. No model
+API key is shipped to the browser. The static Pages build keeps the deterministic
+engine, technical indicators and forecast studio, and explains that generative
+AI, SEC facts and live headlines require the Worker.
 
 ### Search any asset
 
@@ -132,7 +136,9 @@ The 26-asset board is the default universe, but the search field is not limited
 to it. In Workers mode, `/api/search?q=` queries Yahoo Finance's public search
 endpoint for equities, ETFs, indices, futures, FX and crypto pairs. Selecting a
 result loads `/api/quote/:symbol`, adds the asset to the in-memory universe and
-opens the full Research terminal. The Research search field opens the same
+opens the full Research terminal. Opening Research also requests
+`/api/quote/:symbol?deep=1`, which adds SEC reported facts and live headlines for
+US-listed issuers when available. The Research search field opens the same
 global palette, and the direct-ticker fallback lets you load an exact symbol even
 if search is temporarily unavailable. Dynamic assets are loaded on demand, so
 the default snapshot stays under the Workers Free subrequest budget.
@@ -157,8 +163,8 @@ asset set excludes tests, scripts, server code and package metadata.
 | Tab | What it does |
 | --- | --- |
 | Dashboard | Portfolio value/P&L, 26-asset market board, price chart with SMA 20/50, signal board, market ribbon |
-| Research | Price chart with SMA20/SMA50 and saved annotations, technical-indicator grid, multi-horizon scorecard, relative strength, drawdown, fundamentals, macro, correlation heatmap, news sentiment, data-quality audit, JSON export |
-| AI Analyst | Generative research briefs and grounded chat; 12-indicator technical/sentiment scan, key levels and 21-day probabilistic forecast with a forecast chart (Workers mode) |
+| Research | Price chart with SMA20/SMA50 and saved annotations, 23 explained technical indicators, multi-horizon scorecard, relative strength, drawdown, synthetic fundamentals, SEC facts and filings, macro, correlation heatmap, live or synthetic news sentiment, data-quality audit, JSON export |
+| AI Analyst | Generative research briefs and grounded chat; 23-indicator technical/sentiment scan with summaries, SEC facts, key levels and 21-day probabilistic forecast with a forecast chart (Workers mode) |
 | Forecast | Drift + Holt + ridge-factor ensemble, Monte Carlo cones (50/80/95%), scenario matrix, terminal distribution, walk-forward diagnostics, feature attribution |
 | Backtest | 9 strategies, next-open execution, commission/slippage, equity/drawdown charts, trade log |
 | Optimize | Max Sharpe, min variance, risk parity, max diversification, weight cap, efficient frontier |
@@ -179,10 +185,12 @@ deterministic OHLCV; company/ETF fundamentals; a macro backdrop; and seeded news
 sentiment. Every line is generated locally and feeds the research terminal or the
 forecast model's context tilt. On Cloudflare Workers, prices and candles hydrate
 from Yahoo Finance (equities/ETFs) and Coinbase/CoinGecko/DefiLlama (crypto);
-macro hydrates from FRED plus Yahoo proxies. Fundamentals, news and the quality
-audit remain deterministic unless a licensed provider is added. Arbitrary symbols
-loaded through search use the same pipeline and fall back to deterministic data
-if every upstream provider rejects them.
+macro hydrates from FRED plus Yahoo proxies; SEC EDGAR supplies reported company
+facts and recent filings for US-registered issuers; and Yahoo Finance search
+supplies best-effort live headlines. The local synthetic fundamentals remain
+clearly labelled as demo data, and the quality audit stays deterministic.
+Arbitrary symbols loaded through search use the same pipeline and fall back to
+deterministic data if every upstream provider rejects them.
 
 Everything is computed locally in the static build. Portfolio, alerts and theme
 are stored in `localStorage`; clearing site data resets them. The Worker API is
@@ -198,7 +206,7 @@ web/
   sw.js                    Offline precache (all modules)
   js/core/                 Pure, testable modules (usable in Node)
     math.js                Statistics, PRNG, Cholesky, simplex projection
-    indicators.js          SMA/EMA/RMA/RSI/MACD/ATR/Bollinger/Donchian/…
+    indicators.js          SMA/EMA/RMA/RSI/MACD/ATR/Bollinger/Donchian/ADX/… and indicator summaries
     analytics.js           CAGR, Sharpe, Sortino, drawdown, VaR, trade stats
     marketdata.js          Deterministic OHLCV, fundamentals, macro, news, quality
     risk.js                Covariance, contributions, Monte Carlo, stress tests

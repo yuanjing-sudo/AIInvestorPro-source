@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   sma, ema, rma, rsi, macd, trueRange, atr, stochastic, williamsR,
   roc, bollinger, donchian, vwap, obv, aroon, latest, summarize,
+  adx, mfi, cci, keltner, chaikinMoneyFlow, regressionSlope,
+  realizedVolatility, indicatorDetails,
 } from '../js/core/indicators.js';
 import { generateCandles } from '../js/core/marketdata.js';
 
@@ -108,5 +110,63 @@ test('summarize produces finite values on synthetic data', () => {
   const summary = summarize(candles);
   for (const key of ['sma20', 'sma50', 'rsi', 'atr', 'macd', 'vwap', 'meanVolume']) {
     assert.ok(Number.isFinite(summary[key]), `${key} should be finite`);
+  }
+  for (const key of ['adx', 'mfi', 'cci', 'cmf', 'obvSlopePercent', 'regressionSlopePercent', 'volumeTrendPercent', 'realizedVolatility21d']) {
+    assert.ok(Number.isFinite(summary[key]), `${key} should be finite`);
+  }
+  assert.ok(Number.isFinite(summary.bollinger.position));
+  assert.ok(Number.isFinite(summary.donchian.position));
+  assert.ok(Number.isFinite(summary.keltner.position));
+});
+
+test('ADX separates a strong trend from a flat series', () => {
+  const rising = Array.from({ length: 80 }, (_, i) => 100 + i);
+  const high = rising.map((v) => v + 1);
+  const low = rising.map((v) => v - 1);
+  const result = adx(high, low, rising, 14);
+  assert.ok(latest(result.adx) > 25);
+  assert.ok(latest(result.plusDI) > latest(result.minusDI));
+  const flat = new Array(80).fill(100);
+  assert.ok(latest(adx(flat.map((v) => v + 1), flat.map((v) => v - 1), flat, 14).adx) < 25);
+});
+
+test('MFI, CCI, CMF and Keltner return bounded, finite series', () => {
+  const { candles } = generateCandles('AAPL', { count: 120, endDate: '2024-12-31' });
+  const high = candles.map((c) => c.high);
+  const low = candles.map((c) => c.low);
+  const close = candles.map((c) => c.close);
+  const volume = candles.map((c) => c.volume);
+  const flow = latest(mfi(high, low, close, volume));
+  assert.ok(flow >= 0 && flow <= 100);
+  assert.ok(Number.isFinite(latest(cci(high, low, close))));
+  assert.ok(Number.isFinite(latest(chaikinMoneyFlow(high, low, close, volume))));
+  const bands = keltner(high, low, close);
+  assert.ok(Number.isFinite(latest(bands.upper)));
+  assert.ok(Number.isFinite(latest(bands.lower)));
+});
+
+test('regression slope and realized volatility are directionally correct', () => {
+  const rising = Array.from({ length: 40 }, (_, i) => 100 + i * 2);
+  assert.ok(latest(regressionSlope(rising, 20)) > 0);
+  const falling = rising.map((value) => 200 - value);
+  assert.ok(latest(regressionSlope(falling, 20)) < 0);
+  const steady = Array.from({ length: 40 }, (_, i) => 100 * 1.01 ** i);
+  assert.ok(realizedVolatility(steady, 21) < 1e-12);
+});
+
+test('indicatorDetails exposes values, signals, summaries and readings', () => {
+  const { candles } = generateCandles('SPY', { count: 504, endDate: '2026-11-06' });
+  const details = indicatorDetails(candles);
+  assert.ok(details.length >= 20);
+  const rsi = details.find((item) => item.key === 'rsi14');
+  assert.ok(rsi);
+  assert.match(rsi.summary, /average gains/i);
+  assert.match(rsi.reading, /momentum/i);
+  for (const item of details) {
+    assert.equal(typeof item.label, 'string');
+    assert.equal(typeof item.display, 'string');
+    assert.equal(typeof item.signal, 'string');
+    assert.ok(item.summary.length > 20, `${item.key} should have a summary`);
+    assert.ok(item.reading.length > 5, `${item.key} should have a reading`);
   }
 });

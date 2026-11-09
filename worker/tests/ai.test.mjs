@@ -205,6 +205,12 @@ test('insights endpoint returns indicators, trend, simulation and AI interpretat
     assert.equal(typeof payload.indicators.rsi14, 'number');
     assert.equal(typeof payload.indicators.macdHistogram, 'number');
     assert.match(payload.indicators.realizedVolatility21dPercent, /%$/);
+    assert.equal(typeof payload.indicators.adx14, 'number');
+    assert.equal(typeof payload.indicators.mfi14, 'number');
+    assert.ok(Array.isArray(payload.indicatorDetails));
+    assert.ok(payload.indicatorDetails.length >= 20);
+    assert.ok(payload.indicatorDetails.every((item) => item.summary && item.reading));
+    assert.ok(Array.isArray(payload.analysis.signals));
     assert.ok(['Uptrend', 'Downtrend', 'Sideways'].includes(payload.trend.label));
     assert.equal(payload.forecast.horizon, 21);
     assert.ok(Array.isArray(payload.forecast.labels));

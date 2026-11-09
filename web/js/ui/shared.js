@@ -15,6 +15,7 @@ export const fundamentals = market.fundamentals;
 export const news = market.news;
 export const quality = market.quality;
 export const sources = {};
+export const secBySymbol = {};
 export const macro = market.macro;
 
 export const SOURCE_LABELS = {
@@ -25,6 +26,8 @@ export const SOURCE_LABELS = {
   coinmarketcap: 'CoinMarketCap',
   fred: 'FRED',
   yahoo: 'Yahoo Finance',
+  'yahoo-news': 'Yahoo Finance news',
+  sec: 'SEC EDGAR',
   synthetic: 'Synthetic fallback',
   local: 'Local feed',
 };
@@ -35,6 +38,7 @@ export function sourceLabel(id) {
 market.source = 'demo';
 market.provider = 'Deterministic local feed';
 market.sources = sources;
+market.sec = secBySymbol;
 market.generatedAt = new Date().toISOString();
 market.live = false;
 export const assetsBySymbol = Object.fromEntries(UNIVERSE.map((asset) => [asset.symbol, asset]));
@@ -94,6 +98,8 @@ export function hydrateSymbol(payload) {
   if (payload.news) news[symbol] = payload.news;
   if (payload.quality) quality[symbol] = payload.quality;
   if (payload.source) sources[symbol] = payload.source;
+  if (payload.sec) secBySymbol[symbol] = payload.sec;
+  if (payload.provider) market.provider = payload.provider;
   market.live = true;
   market.source = market.source === 'demo' ? 'live' : market.source;
   if (typeof document !== 'undefined') {
@@ -122,6 +128,7 @@ export function hydrateMarket(snapshot) {
   if (snapshot.news) Object.assign(news, snapshot.news);
   if (snapshot.quality) Object.assign(quality, snapshot.quality);
   if (snapshot.sources) Object.assign(sources, snapshot.sources);
+  if (snapshot.sec) Object.assign(secBySymbol, snapshot.sec);
   if (snapshot.macro) Object.assign(macro, snapshot.macro);
   market.source = snapshot.source ?? 'live';
   market.provider = snapshot.provider ?? 'Server API';

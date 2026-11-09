@@ -91,7 +91,8 @@ export async function searchAssets(query) {
 export async function fetchSymbol(symbol, options = {}) {
   return request(`/quote/${encodeURIComponent(symbol)}`, {
     range: options.range ?? '2y',
-  }, 20000);
+    deep: options.deep ? '1' : undefined,
+  }, options.deep ? 30000 : 20000);
 }
 
 export async function fetchServerForecast(symbol, parameters = {}) {

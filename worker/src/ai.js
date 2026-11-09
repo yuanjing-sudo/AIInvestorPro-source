@@ -10,7 +10,7 @@
 
 import { buildSymbol, requireSymbol } from './market.js';
 import { performanceWindows, historicalVolatility, pricePercentile } from '../../web/js/core/marketdata.js';
-import { summarize } from '../../web/js/core/indicators.js';
+import { indicatorDetails, summarize } from '../../web/js/core/indicators.js';
 import { buildForecast } from '../../web/js/core/forecast.js';
 
 export const AI_PROVIDER = 'Cloudflare Workers AI';
@@ -47,7 +47,7 @@ export function aiStatus(env = {}) {
     freeTier: true,
     freeTierNeuronsPerDay: FREE_TIER_NEURONS_PER_DAY,
     models: { ...AI_MODELS },
-    features: ['grounded-chat', 'generative-analysis', 'technical-insights', 'model-fallback'],
+    features: ['grounded-chat', 'generative-analysis', 'technical-insights', 'indicator-summaries', 'sec-fundamentals', 'live-news', 'model-fallback'],
     note: enabled
       ? 'Generative AI is enabled through the Cloudflare Workers AI binding.'
       : 'Add the AI binding in worker/wrangler.jsonc and deploy the Worker to enable generative AI.',
@@ -143,6 +143,43 @@ function compactFundamentals(value) {
   };
 }
 
+function compactSec(value) {
+  if (!value) return null;
+  const metrics = value.metrics ?? {};
+  return {
+    source: 'SEC EDGAR',
+    cik: value.cik ?? null,
+    entityName: value.entityName ?? null,
+    asOf: value.asOf ?? null,
+    fiscalYearEnd: value.fiscalYearEnd ?? null,
+    metrics: {
+      revenue: metrics.revenue ?? null,
+      revenueGrowth: asPercent(metrics.revenueGrowth),
+      netIncome: metrics.netIncome ?? null,
+      netMargin: asPercent(metrics.netMargin),
+      assets: metrics.assets ?? null,
+      liabilities: metrics.liabilities ?? null,
+      equity: metrics.equity ?? null,
+      cash: metrics.cash ?? null,
+      operatingCashFlow: metrics.operatingCashFlow ?? null,
+      freeCashFlow: metrics.freeCashFlow ?? null,
+      epsDiluted: metrics.epsDiluted ?? null,
+      bookValuePerShare: metrics.bookValuePerShare ?? null,
+      debtToEquity: metrics.debtToEquity ?? null,
+      currentRatio: metrics.currentRatio ?? null,
+      grossMargin: asPercent(metrics.grossMargin),
+      rdIntensity: asPercent(metrics.rdIntensity),
+    },
+    annual: value.annual ?? null,
+    latestFilings: (value.filings ?? []).slice(0, 5).map((filing) => ({
+      form: filing.form,
+      filingDate: filing.filingDate,
+      reportDate: filing.reportDate,
+      description: filing.description,
+    })),
+  };
+}
+
 function compactMacro(value) {
   if (!value) return null;
   return {
@@ -191,17 +228,22 @@ export function summarizeMarketContext(payload) {
     performance: performanceWindows(candles).map((row) => ({ window: row.key, return: asPercent(row.value) })),
     realizedVolatility21d: asPercent(historicalVolatility(candles, 21)),
     fundamentals: compactFundamentals(payload.fundamentals),
+    sec: compactSec(payload.sec),
     macro: compactMacro(payload.macro),
     sentiment: payload.sentiment ?? null,
     news: (payload.news ?? []).slice(0, 6).map((item) => ({
       headline: item.headline,
       sentiment: item.sentiment,
       impact: item.impact,
+      source: item.source,
+      live: Boolean(item.live),
     })),
     dataNotes: [
       'Percentages are formatted as percent strings; do not multiply them again.',
-      'Fundamentals and headlines in this build are synthetic demo data and may not be internally consistent with live prices or with each other.',
-      'Only the quote, candles, macro series and quality fields come from the live market-data adapters.',
+      'The `fundamentals` object is synthetic demo data and may not be internally consistent with live prices.',
+      'The `sec` object contains reported SEC EDGAR company facts when present; treat it as reported data, not a forecast.',
+      'Headlines marked live come from Yahoo Finance. Unmarked headlines are synthetic demo data.',
+      'Only quote, candles, macro series, SEC facts, live headlines and quality fields come from upstream adapters.',
     ],
   };
 }
@@ -211,7 +253,7 @@ function systemPrompt() {
     'You are InvestorKit AI, a careful multi-asset research analyst embedded in a portfolio analytics app.',
     'Use only the supplied market context. Do not invent prices, fundamentals, headlines or macro data.',
     'Percent fields are supplied as percent strings; do not rescale or multiply them again.',
-    'In this deployment fundamentals and headlines are synthetic demo data. Always label the fundamental and sentiment sections as synthetic demo data, flag inconsistencies, and never present those fields as current facts.',
+    'The `fundamentals` object is synthetic demo data. The `sec` object, when present, contains reported SEC EDGAR facts. Headlines marked live are upstream; unmarked headlines are synthetic. Always label synthetic fields and never present them as current facts.',
     'Separate observed facts from inference. Mention data source and data-quality limitations when relevant.',
     'Never guarantee returns, never present a trade as certain, and do not give personalized financial advice.',
     'If the context is insufficient, say what is missing instead of filling gaps.',
@@ -231,7 +273,7 @@ export function buildAnalysisMessages(context) {
         'technical (string), fundamental (string), macro (string), sentiment (string),',
         'catalysts (array of 3-5 short strings), risks (array of 3-5 short strings),',
         'actionPlan (array of 3-5 short strings), disclaimer (string).',
-        'Use the context; do not add facts that are not present. Keep the whole brief under 450 words.',
+        'Use the context; do not add facts that are not present. If `sec` is present, distinguish reported SEC facts from synthetic fundamentals. Keep the whole brief under 450 words.',
         `DISCLAIMER TO INCLUDE: ${DISCLAIMER}`,
         'CONTEXT JSON:',
         JSON.stringify(context),
@@ -328,7 +370,20 @@ function compactIndicators(candles, indicators) {
     roc10Percent: asPercent(indicators.roc),
     vwap20: roundNumber(indicators.vwap),
     obv: roundNumber(indicators.obv, 0),
+    obvSlope20: roundNumber(indicators.obvSlopePercent, 2),
     aroonUp25: roundNumber(indicators.aroon),
+    aroonDown25: roundNumber(indicators.aroonDown),
+    adx14: roundNumber(indicators.adx),
+    plusDI14: roundNumber(indicators.plusDI),
+    minusDI14: roundNumber(indicators.minusDI),
+    mfi14: roundNumber(indicators.mfi),
+    cci20: roundNumber(indicators.cci),
+    donchianPosition20: roundNumber(indicators.donchian?.position, 3),
+    keltnerPosition20: roundNumber(indicators.keltner?.position, 3),
+    chaikinMoneyFlow20: roundNumber(indicators.cmf, 4),
+    bollingerBandwidth20: asPercent(indicators.bollinger?.bandwidth),
+    regressionSlope20Percent: roundNumber(indicators.regressionSlopePercent, 4),
+    volumeTrend20Percent: roundNumber(indicators.volumeTrendPercent, 2),
     meanVolume: roundNumber(meanVolume, 0),
     volumeRatio: meanVolume > 0 ? roundNumber(lastVolume / meanVolume, 2) : null,
     realizedVolatility21dPercent: asPercent(historicalVolatility(candles, 21)),
@@ -369,6 +424,28 @@ function classifyTrend(candles, indicators) {
     } else if (indicators.aroon < 30) {
       score -= 1;
       signals.push('Aroon Up below 30');
+    }
+  }
+  if (Number.isFinite(indicators.adx) && indicators.adx > 25) {
+    if (indicators.plusDI >= indicators.minusDI) {
+      score += 1;
+      signals.push('ADX confirms an uptrend');
+    } else {
+      score -= 1;
+      signals.push('ADX confirms a downtrend');
+    }
+  }
+  if (Number.isFinite(indicators.mfi)) {
+    if (indicators.mfi > 55) score += 1;
+    else if (indicators.mfi < 45) score -= 1;
+  }
+  if (Number.isFinite(indicators.cmf)) {
+    if (indicators.cmf > 0.05) {
+      score += 1;
+      signals.push('Chaikin Money Flow shows accumulation');
+    } else if (indicators.cmf < -0.05) {
+      score -= 1;
+      signals.push('Chaikin Money Flow shows distribution');
     }
   }
   const label = score >= 3 ? 'Uptrend' : score <= -3 ? 'Downtrend' : 'Sideways';
@@ -432,8 +509,9 @@ export function buildInsightsMessages(context) {
         'summary (string, 2-4 sentences), trend (string), sentiment (string),',
         'signals (array of 5-8 short strings), risks (array of 3-5 short strings),',
         'levels (string), forecast (string), confidence (number 0-1), disclaimer (string).',
-        'The indicators and forecast are computed by the app; explain them, do not invent new values.',
-        'Call out overbought/oversold conditions, trend agreement/conflict, volume confirmation and forecast uncertainty.',
+        'The indicators, indicatorGuide and forecast are computed by the app; explain them, do not invent new values.',
+        'Call out overbought/oversold conditions, trend agreement/conflict, volume confirmation, indicator summaries and forecast uncertainty.',
+        'If `sec` is present, distinguish reported SEC facts from synthetic fundamentals.',
         'Keep the whole response under 400 words.',
         `DISCLAIMER TO INCLUDE: ${DISCLAIMER}`,
         'CONTEXT JSON:',
@@ -498,9 +576,10 @@ function clampNumber(value, min, max, fallback) {
 
 export async function generateInsights(env, symbol, options = {}) {
   const normalized = requireSymbol(symbol);
-  const payload = await buildSymbol(normalized, { range: '2y', env });
+  const payload = await buildSymbol(normalized, { range: '2y', env, deep: true });
   const candles = payload.candles;
   const indicators = summarize(candles);
+  const details = indicatorDetails(candles);
   const compact = compactIndicators(candles, indicators);
   const trend = classifyTrend(candles, indicators);
   const levels = keyLevels(candles, payload.quote?.price ?? candles.at(-1)?.close);
@@ -525,6 +604,12 @@ export async function generateInsights(env, symbol, options = {}) {
   const context = {
     ...baseContext,
     indicators: compact,
+    indicatorGuide: details.map(({ label, display, signal, reading }) => ({
+      indicator: label,
+      value: display,
+      signal,
+      reading,
+    })),
     trend,
     levels,
     forecast: compactFc ? {
@@ -561,9 +646,12 @@ export async function generateInsights(env, symbol, options = {}) {
     providerLabel: payload.provider,
     quality: payload.quality,
     indicators: compact,
+    indicatorDetails: details,
     trend,
     levels,
     sentiment: payload.sentiment,
+    sec: payload.sec ?? null,
+    newsSource: payload.newsSource ?? 'synthetic',
     forecast: compactFc,
     analysis: parseInsights(result.text),
   };
@@ -571,7 +659,7 @@ export async function generateInsights(env, symbol, options = {}) {
 
 export async function generateAnalysis(env, symbol, options = {}) {
   const normalized = requireSymbol(symbol);
-  const payload = await buildSymbol(normalized, { range: '1y', env });
+  const payload = await buildSymbol(normalized, { range: '1y', env, deep: true });
   const context = summarizeMarketContext(payload);
   const result = await runAi(env, buildAnalysisMessages(context), {
     maxTokens: options.maxTokens ?? 700,
@@ -615,7 +703,7 @@ export async function chatWithAi(env, messages, options = {}) {
   let symbol = null;
   if (options.symbol) {
     symbol = requireSymbol(options.symbol);
-    const payload = await buildSymbol(symbol, { range: '1y', env });
+    const payload = await buildSymbol(symbol, { range: '1y', env, deep: true });
     context = summarizeMarketContext(payload);
   }
   const result = await runAi(env, buildChatMessages(context, sanitized), {

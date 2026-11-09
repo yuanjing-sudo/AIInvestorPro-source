@@ -10,6 +10,8 @@ import {
 } from '../../web/js/core/marketdata.js';
 import { buildForecast } from '../../web/js/core/forecast.js';
 import { fetchYahooChart, normalizeSymbol } from './yahoo.js';
+import { fetchSecProfile } from './sec.js';
+import { fetchYahooNews } from './search.js';
 import { fetchCoinbaseChart } from './coinbase.js';
 import { fetchCoinGeckoChart } from './coingecko.js';
 import { fetchDefiLlamaChart } from './defillama.js';
@@ -27,6 +29,8 @@ const SOURCE_NAMES = {
   coinmarketcap: 'CoinMarketCap',
   fred: 'FRED',
   yahoo: 'Yahoo Finance',
+  'yahoo-news': 'Yahoo Finance news',
+  sec: 'SEC EDGAR',
   synthetic: 'Deterministic fallback',
 };
 
@@ -55,6 +59,16 @@ export const SOURCE_CATALOG = [
     id: 'yahoo', name: 'Yahoo Finance', coverage: ['equities', 'etfs', 'crypto', 'macro proxies'], kind: 'market',
     requiresKey: false, status: 'active', role: 'primary + fallback',
     note: 'Unofficial public chart endpoint. May be delayed or rate-limited.',
+  },
+  {
+    id: 'yahoo-news', name: 'Yahoo Finance news', coverage: ['equities', 'etfs', 'crypto', 'indices'], kind: 'news',
+    requiresKey: false, status: 'active', role: 'best-effort',
+    note: 'Public search news feed. Falls back to clearly labelled synthetic headlines when unavailable.',
+  },
+  {
+    id: 'sec', name: 'SEC EDGAR', coverage: ['US equities', 'US ETFs', 'US funds'], kind: 'fundamentals',
+    requiresKey: false, status: 'active', role: 'reported company facts',
+    note: 'Free public company facts, XBRL metrics and recent filings for US-registered issuers. Not available for indices, FX, futures, crypto or most non-US listings.',
   },
   {
     id: 'coincap', name: 'CoinCap', coverage: ['crypto'], kind: 'market',
@@ -315,18 +329,55 @@ function fundamentalsForAny(symbol, asset) {
 export async function buildSymbol(symbol, options = {}) {
   const entry = await loadSymbol(symbol, { ...options, range: options.range ?? '2y' });
   const quality = dataQuality(entry.candles, entry.source === 'synthetic');
-  const items = newsFor(symbol, entry.candles.at(-1)?.date ?? null);
+  const fallbackNews = newsFor(symbol, entry.candles.at(-1)?.date ?? null);
+  let items = fallbackNews;
+  let newsSource = 'synthetic';
+  let sec = null;
+  if (options.deep === true) {
+    const asset = entry.asset ?? assetFor(symbol, entry.meta);
+    const [secResult, newsResult] = await Promise.allSettled([
+      fetchSecProfile(symbol, {
+        env: options.env,
+        kind: asset?.kind,
+        cache: options.cache,
+      }),
+      fetchYahooNews(symbol, { cache: options.cache }),
+    ]);
+    if (secResult.status === 'fulfilled' && secResult.value) {
+      const profile = secResult.value;
+      const hasMetrics = Object.values(profile.metrics ?? {}).some((value) => Number.isFinite(value));
+      const hasFilings = Array.isArray(profile.filings) && profile.filings.length > 0;
+      if (hasMetrics || hasFilings) sec = profile;
+    }
+    if (newsResult.status === 'fulfilled' && newsResult.value.length) {
+      items = newsResult.value;
+      newsSource = 'yahoo-news';
+    }
+  }
+  const extraSources = [
+    sec ? 'SEC EDGAR' : null,
+    newsSource === 'yahoo-news' ? 'Yahoo Finance news' : null,
+  ].filter(Boolean);
   return {
     ok: true,
     source: entry.source,
-    provider: `${sourceName(entry.source)} (server-side)`,
+    provider: extraSources.length
+      ? `${sourceName(entry.source)} + ${extraSources.join(' + ')} (server-side)`
+      : `${sourceName(entry.source)} (server-side)`,
+    dataSources: {
+      market: entry.source,
+      sec: sec ? 'sec' : null,
+      news: newsSource,
+    },
     generatedAt: new Date().toISOString(),
     asset: entry.asset ?? assetFor(symbol, entry.meta),
     meta: entry.meta,
     candles: entry.candles,
     quote: entry.quote,
     fundamentals: fundamentalsForAny(symbol, entry.asset),
+    sec,
     news: items,
+    newsSource,
     sentiment: sentimentSummary(items),
     quality,
     macro: macroSnapshot((findSymbolCandles(symbol, entry.candles)), entry.quote?.asOf ?? null),

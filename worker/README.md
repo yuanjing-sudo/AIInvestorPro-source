@@ -19,13 +19,13 @@ deterministic local feed.
 | `GET /api/search?q=apple` | Yahoo Finance symbol search for equities, ETFs, indices, futures, FX and crypto | 5m |
 | `GET /api/universe` | The 26-asset default research universe | 1h |
 | `GET /api/market?symbols=SPY,QQQ&range=2y` | Snapshot of candles, quotes, fundamentals, news, quality and macro | 60s |
-| `GET /api/quote/SPY?range=2y` | One asset with OHLCV, profile, fundamentals, sentiment and quality | 60s |
+| `GET /api/quote/SPY?range=2y&deep=1` | One asset with OHLCV, profile, fundamentals, SEC facts, headlines, sentiment and quality | 60s |
 | `GET /api/forecast/SPY?horizon=21&simulations=2000&seed=7` | Runs the shared forecast ensemble on the server | 120s |
 | `GET /api/macro` | FRED yields/CPI/unemployment/GDP plus VIX, dollar, oil and gold proxies | 300s |
 | `GET /api/ai/status` | AI provider, model registry and binding status | 60s |
 | `POST /api/ai/chat` | Grounded chat with the selected asset context | none |
 | `POST /api/ai/analysis/:symbol` | Generative structured research brief for one asset | none |
-| `POST /api/ai/insights/:symbol` | 12 technical indicators, trend/levels/sentiment, 21-day simulation and generative interpretation | none |
+| `POST /api/ai/insights/:symbol` | 23 technical indicators with summaries, SEC facts, trend/levels/sentiment, 21-day simulation and generative interpretation | none |
 
 The Worker imports the same `web/js/core/forecast.js`, `marketdata.js`,
 `indicators.js` and related modules used by the browser. There is no second
@@ -39,6 +39,8 @@ implementation of the numerical engine.
 2. Equities and ETFs request Yahoo Finance's public chart endpoint. Crypto
    symbols try Coinbase first, then CoinGecko, DefiLlama, Yahoo and finally the
    deterministic feed. Macro requests use FRED CSV series plus Yahoo proxies.
+   Deep quote requests (`?deep=1`) also query SEC EDGAR company facts and recent
+   filings for US-registered issuers, plus Yahoo Finance search headlines.
 3. If a provider is unavailable or rate-limits the request, the next provider in
    the chain is tried. A symbol only becomes `source: "synthetic"` after every
    provider fails; responses report `source: "live"`, `"mixed"` or `"synthetic"`
@@ -48,7 +50,8 @@ implementation of the numerical engine.
    The service worker never caches `/api/*`.
 5. The **AI Analyst** tab calls the Worker's AI routes. The Worker builds a
    compact context from the same symbol payload and sends it to Cloudflare
-   Workers AI. The technical scan also computes 12 deterministic indicators and
+   Workers AI. The technical scan computes 23 deterministic indicators with
+   plain-English summaries, includes SEC reported facts when available and runs
    a 21-day simulation before asking the model to interpret them. The browser
    never receives an API key or calls a model directly.
 
@@ -66,6 +69,8 @@ any of this data for trading decisions.
 | DefiLlama | Crypto closes, DeFi coverage | Active, fallback | Up to 500 daily points per request |
 | FRED (St. Louis Fed) | Treasury yields, CPI, unemployment, real GDP | Active, primary | Public CSV endpoint; no key |
 | Yahoo Finance | Equities, ETFs, crypto and macro proxies | Active, primary/fallback | Unofficial public chart endpoint |
+| Yahoo Finance news | Live headlines for the selected asset | Active, best-effort | Public search news feed; falls back to labelled synthetic headlines |
+| SEC EDGAR | Reported US company facts and recent filings | Active | Free public XBRL facts/submissions; descriptive User-Agent required; not available for indices, FX, futures, crypto or most non-US listings |
 | CoinCap | Crypto | Optional | Public v2 host is retired; v3 needs `COINCAP_API_KEY` |
 | CoinMarketCap | Crypto | Optional | Historical OHLCV needs `COINMARKETCAP_API_KEY` |
 | Bloomberg | All | Not integrated | Requires a licensed Terminal/API subscription |
@@ -91,7 +96,10 @@ The AI layer is in [`src/ai.js`](src/ai.js). It:
 * validates and caps chat messages (16 messages, 4,000 characters each);
 * builds analysis/chat/insight prompts from a compact server-side market context;
 * computes RSI, MACD, ATR, Bollinger, stochastic, Williams %R, ROC, VWAP, OBV,
-  Aroon, volume ratio and realized volatility for `/api/ai/insights/:symbol`;
+  Aroon Up/Down, ADX/DI, MFI, CCI, Donchian, Keltner, Chaikin Money Flow, OBV
+  slope, Bollinger bandwidth, regression slope, volume trend and realized
+  volatility for `/api/ai/insights/:symbol`; each indicator carries a signal and
+  plain-English summary;
 * asks the model for JSON and normalizes/validates the response;
 * tries the primary, fallback and fast models in order;
 * returns provider/model metadata and keeps all model calls server-side.
@@ -120,11 +128,11 @@ cd worker
 npm test
 ```
 
-They cover symbol validation, Yahoo search parsing, Yahoo/Coinbase/CoinGecko/
-DefiLlama/FRED parsing, optional keyed providers, routing, the asset binding
-fallback, provider selection, the deterministic fallback when upstream is
-unreachable, AI status/chat/analysis/insights, JSON parsing, model fallback and
-message validation.
+They cover symbol validation, Yahoo search and news parsing, Yahoo/Coinbase/
+CoinGecko/DefiLlama/FRED parsing, SEC company-facts and filing parsing, optional
+keyed providers, routing, the asset binding fallback, provider selection, the
+deterministic fallback when upstream is unreachable, AI status/chat/analysis/
+insights, JSON parsing, model fallback and message validation.
 
 ## Deploy
 
@@ -196,6 +204,7 @@ Optional secrets:
 | --- | --- |
 | `COINCAP_API_KEY` | Enables the CoinCap v3 fallback for crypto |
 | `COINMARKETCAP_API_KEY` | Enables the CoinMarketCap historical OHLCV fallback |
+| `SEC_USER_AGENT` | Optional descriptive User-Agent for SEC EDGAR requests; defaults to the project identifier |
 
 ## Operational notes
 
@@ -211,7 +220,12 @@ Optional secrets:
   range. That is still well inside the free-plan budget for one symbol.
 - `GET /api/sources` reports which market-data providers are active, optional or
   unavailable. Bloomberg, Investing.com and Traders Union are intentionally not
-  scraped.
+  scraped. SEC EDGAR is queried only for US-registered issuers and only on deep
+  quote or AI requests, so the default snapshot stays inside the subrequest
+  budget.
+- SEC EDGAR requires a descriptive User-Agent. The Worker sends one and caches
+  company facts for 6 hours and submissions for 1 hour at the edge. Do not remove
+  the User-Agent or poll SEC faster than its fair-access policy allows.
 - `GET /api/ai/status` reports whether the Workers AI binding is configured.
   The AI routes are stateless: conversations are not stored by the Worker. The
   client keeps the current chat in memory only.

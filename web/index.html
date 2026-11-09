@@ -237,7 +237,8 @@
           <div class="horizon-grid" id="research-horizons"></div>
         </article>
         <article class="card">
-          <div class="card-head"><div><h2>Technical indicators</h2><p class="muted">Deterministic 14-period signals from OHLCV</p></div><span class="pill" id="research-trend-pill">—</span></div>
+          <div class="card-head"><div><h2>Technical indicators</h2><p class="muted">23 deterministic signals with plain-English summaries</p></div><span class="pill" id="research-trend-pill">—</span></div>
+          <p class="muted small" id="research-technical-summary">—</p>
           <div class="indicator-grid" id="research-technical"></div>
         </article>
       </div>
@@ -274,6 +275,34 @@
           <div class="macro-grid" id="research-macro"></div>
         </article>
       </div>
+
+      <article class="card">
+        <div class="card-head">
+          <div><h2>SEC fundamentals &amp; filings</h2><p class="muted" id="research-sec-note">Reported company facts from SEC EDGAR</p></div>
+          <span class="pill" id="research-sec-pill">—</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="research-sec-metrics">
+            <thead><tr><th scope="col">Metric</th><th scope="col">Value</th><th scope="col">Metric</th><th scope="col">Value</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="grid two sec-detail-grid">
+          <div>
+            <h3 class="mini-title">Annual reported series</h3>
+            <div class="table-wrap">
+              <table class="data-table" id="research-sec-annual">
+                <thead><tr><th scope="col">Period</th><th scope="col">Revenue</th><th scope="col">Net income</th><th scope="col">EPS</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 class="mini-title">Recent filings</h3>
+            <div class="list" id="research-sec-filings"></div>
+          </div>
+        </div>
+      </article>
 
       <div class="grid two">
         <article class="card">
@@ -416,7 +445,7 @@
         <div>
           <p class="eyebrow">Generative intelligence</p>
           <h1>AI Analyst</h1>
-          <p class="muted">Grounded research briefs and chat through Cloudflare Workers AI. The model sees live quote, performance, macro, sentiment, news and data-quality context.</p>
+          <p class="muted">Grounded research briefs and chat through Cloudflare Workers AI. The model sees live quote, performance, macro, SEC reported facts, live or synthetic headlines, 23 indicators and data-quality context.</p>
         </div>
         <div class="ai-status-row">
           <span class="pill" id="ai-status-pill">Checking…</span>
@@ -468,7 +497,7 @@
         <div class="card-head">
           <div>
             <h2>Technical, sentiment &amp; simulation scan</h2>
-            <p class="muted">RSI, MACD, ATR, Bollinger, stochastic, Williams %R, ROC, VWAP, OBV, Aroon, volume and volatility, plus a 21-day probabilistic forecast interpreted by the model.</p>
+            <p class="muted">23 indicators — RSI, MACD, ATR, Bollinger, stochastic, Williams %R, ROC, VWAP, OBV, Aroon, ADX, MFI, CCI, Donchian, Keltner, Chaikin flow, bandwidth, slope and volume — each with a plain-English summary, plus a 21-day probabilistic forecast interpreted by the model.</p>
           </div>
           <button class="button primary" id="ai-scan" type="button">Run AI scan</button>
         </div>
