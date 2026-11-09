@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
-import { marketSnapshot } from '../js/core/marketdata.js';
+import { marketSnapshot, dataQuality, sentimentSummary, newsFor } from '../js/core/marketdata.js';
 import { buildForecast } from '../js/core/forecast.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -54,6 +54,76 @@ const forecast = buildForecast(market.candleMap.SPY, {
 forecast.server = true;
 forecast.provider = 'Test server forecast';
 
+const costCandles = market.candleMap.SPY.map((candle, index) => ({
+  ...candle,
+  close: candle.close * 4.2 + Math.sin(index / 13) * 8,
+  open: candle.open * 4.2 + Math.sin(index / 13) * 8,
+  high: candle.high * 4.2 + Math.sin(index / 13) * 8,
+  low: candle.low * 4.2 + Math.sin(index / 13) * 8,
+}));
+const costQuote = {
+  ...market.quotes.SPY,
+  symbol: 'COST',
+  price: costCandles.at(-1).close,
+  previousClose: costCandles.at(-2).close,
+  changePercent: (costCandles.at(-1).close / costCandles.at(-2).close - 1) * 100,
+  asOf: costCandles.at(-1).date,
+};
+const costNews = newsFor('COST', costCandles.at(-1).date);
+const costPayload = {
+  ok: true,
+  source: 'yahoo',
+  provider: 'Yahoo Finance (server-side)',
+  generatedAt: new Date().toISOString(),
+  asset: { symbol: 'COST', name: 'Costco Wholesale Corporation', sector: 'Consumer Defensive', kind: 'equity', exchange: 'NMS', instrumentType: 'EQUITY' },
+  meta: { longName: 'Costco Wholesale Corporation', currency: 'USD', exchange: 'NMS' },
+  candles: costCandles,
+  quote: costQuote,
+  fundamentals: {
+    symbol: 'COST', kind: 'equity', marketCap: 380e9, enterpriseValue: 385e9, sharesOutstanding: 444e6,
+    pe: 48, forwardPE: 44, peg: 3.2, priceToSales: 1.4, priceToBook: 15, eps: 16,
+    revenueGrowth: 0.07, earningsGrowth: 0.1, grossMargin: 0.12, operatingMargin: 0.04,
+    profitMargin: 0.03, returnOnEquity: 0.3, debtToEquity: 0.4, currentRatio: 1.1,
+    dividendYield: 0.005, payoutRatio: 0.28, beta: 0.8, analystRating: 'Buy', analystTarget: 900,
+    analystUpside: 0.1, analystCount: 24, expenseRatio: null, aum: null, employees: 316000,
+    nextEarnings: null, fiscalYearEnd: null, asOf: costCandles.at(-1).date,
+  },
+  news: costNews,
+  sentiment: sentimentSummary(costNews),
+  quality: dataQuality(costCandles, false),
+  macro: { regime: 'Neutral' },
+  warning: null,
+};
+const insightsPayload = {
+  ok: true,
+  provider: 'Cloudflare Workers AI',
+  model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  generatedAt: new Date().toISOString(),
+  symbol: 'SPY',
+  source: 'yahoo',
+  providerLabel: 'Yahoo Finance (server-side)',
+  quality: { rows: 300, synthetic: false },
+  indicators: {
+    price: forecast.start, sma20: forecast.start * 0.99, sma50: forecast.start * 0.97,
+    ema12: forecast.start * 0.995, ema26: forecast.start * 0.985, rsi14: 61.2,
+    atr14: 3.4, atrPercent: '0.74%', macd: 1.2, macdSignal: 0.7, macdHistogram: 0.5,
+    bollingerUpper: forecast.start * 1.04, bollingerMiddle: forecast.start, bollingerLower: forecast.start * 0.96,
+    bollingerPosition: 0.5, stochastic14: 72, williamsR14: -31, roc10Percent: '2.40%',
+    vwap20: forecast.start * 0.995, obv: 123456789, aroonUp25: 78, meanVolume: 80000000,
+    volumeRatio: 1.12, realizedVolatility21dPercent: '18.20%', pricePercentile1yPercent: '72.00%',
+  },
+  trend: { label: 'Uptrend', score: 4, tone: 'good', signals: ['Price above SMA20'] },
+  levels: { price: forecast.start, support20: forecast.start * 0.95, resistance20: forecast.start * 1.03, support60: forecast.start * 0.9, resistance60: forecast.start * 1.08, rangePosition: 0.55 },
+  sentiment: { label: 'Positive', score: 0.24, positive: 2, negative: 0 },
+  forecast,
+  analysis: {
+    summary: 'Test technical scan summary', trend: 'Test trend read', sentiment: 'Test sentiment read',
+    signals: ['Price above SMA20', 'MACD above signal'], risks: ['Mean reversion'],
+    levels: 'Test levels read', forecast: 'Test forecast read', confidence: 0.61,
+    disclaimer: 'Test disclaimer', format: 'json',
+  },
+};
+
 const json = (payload, status = 200) => new Response(JSON.stringify(payload), {
   status,
   headers: { 'content-type': 'application/json' },
@@ -72,6 +142,12 @@ globalThis.fetch = async (input) => {
   if (url.pathname === '/api/market') return json(snapshot);
   if (url.pathname === '/api/macro') return json({ ok: true, source: 'live', macro: { vix: 22.4 } });
   if (url.pathname === '/api/forecast/SPY') return json({ ok: true, server: true, source: 'live', forecast });
+  if (url.pathname === '/api/search') {
+    return json({ ok: true, query: url.searchParams.get('q'), provider: 'Yahoo Finance search', results: [
+      { symbol: 'COST', name: 'Costco Wholesale Corporation', exchange: 'NMS', exchangeDisplay: 'NASDAQ', type: 'equity', direct: false },
+    ] });
+  }
+  if (url.pathname === '/api/quote/COST') return json(costPayload);
   if (url.pathname === '/api/ai/status') return json({
     ok: true, enabled: true, provider: 'Cloudflare Workers AI',
     framework: 'Workers AI native binding', freeTier: true,
@@ -88,6 +164,7 @@ globalThis.fetch = async (input) => {
       actionPlan: ['Action'], disclaimer: 'Test disclaimer', format: 'json',
     },
   });
+  if (url.pathname === '/api/ai/insights/SPY') return json(insightsPayload);
   if (url.pathname === '/api/ai/chat') return json({
     ok: true, provider: 'Cloudflare Workers AI', model: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
     generatedAt: new Date().toISOString(), symbol: 'SPY', reply: 'Test chat reply',
@@ -132,6 +209,31 @@ document.querySelector('#ai-chat-form').dispatchEvent(new window.Event('submit',
 await wait(150);
 assert(document.querySelector('#ai-chat').textContent.includes('Test chat reply'), 'AI chat reply rendered');
 
+document.querySelector('#ai-scan').click();
+await wait(250);
+assert(document.querySelector('#ai-insights').textContent.includes('Test technical scan summary'), 'AI insights rendered');
+assert(document.querySelector('#ai-insights').textContent.includes('RSI 14'), 'AI insight indicators rendered');
+assert(document.querySelector('#ai-insights').textContent.includes('Probability up'), 'AI insight forecast stats rendered');
+assert(document.querySelector('#ai-insight-chart-wrap').hidden === false, 'AI forecast chart visible');
+
+// Global search and dynamic asset hydration.
+document.querySelector('[data-tab="research"]').click();
+document.querySelector('#command-open').click();
+const commandInput = document.querySelector('#command-input');
+commandInput.value = 'cost';
+commandInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+await wait(450);
+const costCommand = Array.from(document.querySelectorAll('#command-results [data-command-index]'))
+  .find((item) => item.textContent.includes('COST'));
+assert(costCommand, 'remote search result appears in command palette');
+costCommand.click();
+await wait(400);
+assert(document.querySelector('#tab-research').hidden === false, 'dynamic asset opens research');
+assert(document.querySelector('#research-symbol').value === 'COST', 'dynamic asset selected');
+assert(document.querySelector('#research-fund-note').textContent.includes('Costco'), 'dynamic fundamentals rendered');
+assert(document.querySelector('#research-price-canvas').width > 0, 'dynamic price chart rendered');
+assert(document.querySelector('#research-technical').textContent.includes('RSI'), 'technical indicators rendered');
+
 if (errors.length) throw new Error(errors.map((error) => error?.stack ?? error).join('\n'));
-console.log('Live hydration smoke passed: health, hydrate, badge, ticker, server forecast, AI analysis and chat.');
+console.log('Live hydration smoke passed: health, hydrate, badge, ticker, server forecast, AI analysis/chat/insights, search and dynamic research.');
 process.exit(0);

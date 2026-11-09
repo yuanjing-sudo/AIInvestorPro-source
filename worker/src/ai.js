@@ -9,7 +9,9 @@
 // wrangler.jsonc and Cloudflare authenticates the invocation.
 
 import { buildSymbol, requireSymbol } from './market.js';
-import { performanceWindows, historicalVolatility } from '../../web/js/core/marketdata.js';
+import { performanceWindows, historicalVolatility, pricePercentile } from '../../web/js/core/marketdata.js';
+import { summarize } from '../../web/js/core/indicators.js';
+import { buildForecast } from '../../web/js/core/forecast.js';
 
 export const AI_PROVIDER = 'Cloudflare Workers AI';
 export const AI_FRAMEWORK = 'Workers AI native binding';
@@ -45,7 +47,7 @@ export function aiStatus(env = {}) {
     freeTier: true,
     freeTierNeuronsPerDay: FREE_TIER_NEURONS_PER_DAY,
     models: { ...AI_MODELS },
-    features: ['grounded-chat', 'generative-analysis', 'model-fallback'],
+    features: ['grounded-chat', 'generative-analysis', 'technical-insights', 'model-fallback'],
     note: enabled
       ? 'Generative AI is enabled through the Cloudflare Workers AI binding.'
       : 'Add the AI binding in worker/wrangler.jsonc and deploy the Worker to enable generative AI.',
@@ -289,6 +291,281 @@ export function parseAnalysis(text) {
     actionPlan: asList(parsed.actionPlan),
     disclaimer: asString(parsed.disclaimer) || DISCLAIMER,
     format: 'json',
+  };
+}
+
+
+function roundNumber(value, digits = 2) {
+  return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
+}
+
+function compactIndicators(candles, indicators) {
+  const close = candles.at(-1)?.close ?? null;
+  const lastVolume = candles.at(-1)?.volume ?? 0;
+  const meanVolume = Number.isFinite(indicators.meanVolume) ? indicators.meanVolume : 0;
+  const bollinger = indicators.bollinger ?? {};
+  const bollingerRange = Number.isFinite(bollinger.upper) && Number.isFinite(bollinger.lower)
+    ? bollinger.upper - bollinger.lower
+    : 0;
+  return {
+    price: roundNumber(close),
+    sma20: roundNumber(indicators.sma20),
+    sma50: roundNumber(indicators.sma50),
+    ema12: roundNumber(indicators.ema12),
+    ema26: roundNumber(indicators.ema26),
+    rsi14: roundNumber(indicators.rsi),
+    atr14: roundNumber(indicators.atr),
+    atrPercent: asPercent(Number.isFinite(indicators.atr) && close ? indicators.atr / close : null),
+    macd: roundNumber(indicators.macd, 4),
+    macdSignal: roundNumber(indicators.macdSignal, 4),
+    macdHistogram: roundNumber((indicators.macd ?? 0) - (indicators.macdSignal ?? 0), 4),
+    bollingerUpper: roundNumber(bollinger.upper),
+    bollingerMiddle: roundNumber(bollinger.middle),
+    bollingerLower: roundNumber(bollinger.lower),
+    bollingerPosition: bollingerRange > 0 ? roundNumber((close - bollinger.lower) / bollingerRange, 3) : null,
+    stochastic14: roundNumber(indicators.stochastic),
+    williamsR14: roundNumber(indicators.williams),
+    roc10Percent: asPercent(indicators.roc),
+    vwap20: roundNumber(indicators.vwap),
+    obv: roundNumber(indicators.obv, 0),
+    aroonUp25: roundNumber(indicators.aroon),
+    meanVolume: roundNumber(meanVolume, 0),
+    volumeRatio: meanVolume > 0 ? roundNumber(lastVolume / meanVolume, 2) : null,
+    realizedVolatility21dPercent: asPercent(historicalVolatility(candles, 21)),
+    pricePercentile1yPercent: asPercent(pricePercentile(candles, 252)),
+  };
+}
+
+function classifyTrend(candles, indicators) {
+  const close = candles.at(-1)?.close ?? 0;
+  const signals = [];
+  let score = 0;
+  const check = (condition, positive, negative) => {
+    if (condition) {
+      score += 1;
+      signals.push(positive);
+    } else if (negative) {
+      score -= 1;
+      signals.push(negative);
+    }
+  };
+  check(close > indicators.sma20, 'Price above SMA20', 'Price below SMA20');
+  check(indicators.sma20 > indicators.sma50, 'SMA20 above SMA50', 'SMA20 below SMA50');
+  check(indicators.macd > indicators.macdSignal, 'MACD above signal', 'MACD below signal');
+  if (Number.isFinite(indicators.rsi)) {
+    if (indicators.rsi > 55) {
+      score += 1;
+      signals.push('RSI above 55');
+    } else if (indicators.rsi < 45) {
+      score -= 1;
+      signals.push('RSI below 45');
+    }
+  }
+  check(close > indicators.bollinger?.middle, 'Price above Bollinger midline', 'Price below Bollinger midline');
+  if (Number.isFinite(indicators.aroon)) {
+    if (indicators.aroon > 70) {
+      score += 1;
+      signals.push('Aroon Up above 70');
+    } else if (indicators.aroon < 30) {
+      score -= 1;
+      signals.push('Aroon Up below 30');
+    }
+  }
+  const label = score >= 3 ? 'Uptrend' : score <= -3 ? 'Downtrend' : 'Sideways';
+  return {
+    label,
+    score,
+    signals,
+    tone: score >= 3 ? 'good' : score <= -3 ? 'bad' : 'warn',
+  };
+}
+
+function keyLevels(candles, price) {
+  const last20 = candles.slice(-20);
+  const last60 = candles.slice(-60);
+  const support20 = Math.min(...last20.map((candle) => candle.low));
+  const resistance20 = Math.max(...last20.map((candle) => candle.high));
+  const support60 = Math.min(...last60.map((candle) => candle.low));
+  const resistance60 = Math.max(...last60.map((candle) => candle.high));
+  const range = resistance60 - support60;
+  return {
+    price: roundNumber(price),
+    support20: roundNumber(support20),
+    resistance20: roundNumber(resistance20),
+    support60: roundNumber(support60),
+    resistance60: roundNumber(resistance60),
+    rangePosition: range > 0 ? roundNumber((price - support60) / range, 3) : null,
+  };
+}
+
+function compactForecast(forecast) {
+  if (!forecast) return null;
+  return {
+    horizon: forecast.horizon,
+    start: roundNumber(forecast.start),
+    startDate: forecast.startDate instanceof Date ? forecast.startDate.toISOString() : forecast.startDate,
+    expectedPrice: roundNumber(forecast.expectedPrice),
+    expectedReturn: roundNumber(forecast.expectedReturn, 4),
+    targetPrice: roundNumber(forecast.targetPrice),
+    probabilityUp: roundNumber(forecast.probabilityUp, 4),
+    var95: roundNumber(forecast.var95),
+    cvar95: roundNumber(forecast.cvar95),
+    confidence: roundNumber(forecast.confidence, 1),
+    annualVolatility: roundNumber(forecast.annualVolatility, 4),
+    regime: forecast.regime,
+    diagnostics: forecast.diagnostics,
+    labels: forecast.labels.map((label) => (label instanceof Date ? label.toISOString() : label)),
+    history: forecast.history.map((candle) => candle.close),
+    median: forecast.median,
+    bands: forecast.bands.map((band) => ({ level: band.level, lower: band.lower, upper: band.upper })),
+  };
+}
+
+export function buildInsightsMessages(context) {
+  return [
+    { role: 'system', content: systemPrompt() },
+    {
+      role: 'user',
+      content: [
+        'Interpret the deterministic technical scan and probabilistic simulation for the asset below.',
+        'Return ONLY a valid JSON object with these keys:',
+        'summary (string, 2-4 sentences), trend (string), sentiment (string),',
+        'signals (array of 5-8 short strings), risks (array of 3-5 short strings),',
+        'levels (string), forecast (string), confidence (number 0-1), disclaimer (string).',
+        'The indicators and forecast are computed by the app; explain them, do not invent new values.',
+        'Call out overbought/oversold conditions, trend agreement/conflict, volume confirmation and forecast uncertainty.',
+        'Keep the whole response under 400 words.',
+        `DISCLAIMER TO INCLUDE: ${DISCLAIMER}`,
+        'CONTEXT JSON:',
+        JSON.stringify(context),
+      ].join('\n'),
+    },
+  ];
+}
+
+export function parseInsights(text) {
+  const raw = String(text ?? '').trim();
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+  let parsed = null;
+  if (start >= 0 && end > start) {
+    try {
+      parsed = JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      parsed = null;
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return {
+      summary: raw.slice(0, 4_000) || 'The model returned no technical commentary.',
+      trend: 'sideways',
+      sentiment: 'neutral',
+      signals: [],
+      risks: [],
+      levels: '',
+      forecast: '',
+      confidence: 0.5,
+      disclaimer: DISCLAIMER,
+      format: 'text',
+    };
+  }
+  const asString = (value) => (typeof value === 'string' ? value.trim() : '');
+  const asList = (value) => (Array.isArray(value) ? value : [])
+    .map((item) => (typeof item === 'string' ? item.trim() : String(item ?? '').trim()))
+    .filter(Boolean)
+    .slice(0, 8);
+  const confidence = Number(parsed.confidence);
+  return {
+    summary: asString(parsed.summary) || 'No summary was returned.',
+    trend: asString(parsed.trend) || 'sideways',
+    sentiment: asString(parsed.sentiment) || 'neutral',
+    signals: asList(parsed.signals),
+    risks: asList(parsed.risks),
+    levels: asString(parsed.levels),
+    forecast: asString(parsed.forecast),
+    confidence: Number.isFinite(confidence) ? Math.min(1, Math.max(0, confidence)) : 0.5,
+    disclaimer: asString(parsed.disclaimer) || DISCLAIMER,
+    format: 'json',
+  };
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+export async function generateInsights(env, symbol, options = {}) {
+  const normalized = requireSymbol(symbol);
+  const payload = await buildSymbol(normalized, { range: '2y', env });
+  const candles = payload.candles;
+  const indicators = summarize(candles);
+  const compact = compactIndicators(candles, indicators);
+  const trend = classifyTrend(candles, indicators);
+  const levels = keyLevels(candles, payload.quote?.price ?? candles.at(-1)?.close);
+  const horizon = clampNumber(options.horizon, 5, 126, 21);
+  const simulations = clampNumber(options.simulations, 200, 3000, 1200);
+  const seed = clampNumber(options.seed, 0, 999999, 7);
+  const forecast = buildForecast(candles, {
+    symbol: normalized,
+    horizon,
+    simulations,
+    seed,
+    history: 180,
+    mode: 'ensemble',
+    context: {
+      fundamentals: payload.fundamentals,
+      macro: payload.macro,
+      sentiment: payload.sentiment,
+    },
+  });
+  const compactFc = compactForecast(forecast);
+  const baseContext = summarizeMarketContext(payload);
+  const context = {
+    ...baseContext,
+    indicators: compact,
+    trend,
+    levels,
+    forecast: compactFc ? {
+      horizon: compactFc.horizon,
+      expectedPrice: compactFc.expectedPrice,
+      expectedReturn: asPercent(compactFc.expectedReturn),
+      targetPrice: compactFc.targetPrice,
+      probabilityUp: asPercent(compactFc.probabilityUp),
+      var95: compactFc.var95,
+      confidence: compactFc.confidence,
+      annualVolatility: asPercent(compactFc.annualVolatility),
+      regime: compactFc.regime,
+      diagnostics: compactFc.diagnostics,
+    } : null,
+    dataNotes: [
+      ...(baseContext.dataNotes ?? []),
+      'Technical indicators are deterministic calculations from the OHLCV history.',
+      'The forecast is a probabilistic ensemble simulation, not a guaranteed price target.',
+    ],
+  };
+  const result = await runAi(env, buildInsightsMessages(context), {
+    maxTokens: options.maxTokens ?? 650,
+    temperature: options.temperature ?? 0.25,
+  });
+  return {
+    ok: true,
+    provider: AI_PROVIDER,
+    framework: AI_FRAMEWORK,
+    model: result.model,
+    freeTier: true,
+    generatedAt: new Date().toISOString(),
+    symbol: normalized,
+    source: payload.source,
+    providerLabel: payload.provider,
+    quality: payload.quality,
+    indicators: compact,
+    trend,
+    levels,
+    sentiment: payload.sentiment,
+    forecast: compactFc,
+    analysis: parseInsights(result.text),
   };
 }
 

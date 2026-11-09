@@ -91,13 +91,16 @@ are stored locally.
 
 An optional Cloudflare Worker deployment adds a real server side: the Worker serves the
 same PWA and exposes `/api/market`, `/api/quote/:symbol`, `/api/forecast/:symbol`,
-`/api/macro`, `/api/sources` and generative AI endpoints (`/api/ai/status`,
-`/api/ai/chat`, `/api/ai/analysis/:symbol`). In that mode the browser hydrates a
-multi-source live feed (Yahoo Finance for equities/ETFs, Coinbase/CoinGecko/DefiLlama for
-crypto and FRED for macro), requests forecasts from the server and adds an **AI Analyst**
-tab with grounded research briefs and chat. If the API is unavailable it silently falls
-back to the deterministic local feed; the static build stays offline-first and does not
-pretend to have an LLM. See [`worker/README.md`](worker/README.md).
+`/api/macro`, `/api/sources`, `/api/search?q=` and generative AI endpoints
+(`/api/ai/status`, `/api/ai/chat`, `/api/ai/analysis/:symbol`,
+`/api/ai/insights/:symbol`). In that mode the browser hydrates a multi-source live feed
+(Yahoo Finance for equities/ETFs, Coinbase/CoinGecko/DefiLlama for crypto and FRED for
+macro), searches any Yahoo-listed ticker, requests forecasts from the server and adds an
+**AI Analyst** tab with grounded research briefs, chat and a technical/sentiment scan.
+The Research terminal adds a price chart with SMA20/SMA50 and saved click annotations.
+If the API is unavailable it silently falls back to the deterministic local feed; the
+static build stays offline-first and does not pretend to have an LLM. See
+[`worker/README.md`](worker/README.md).
 
 GitHub Pages deployment is automated by
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml), using **GitHub Actions** as
@@ -134,6 +137,9 @@ automatic fallback to Llama 3.1 8B and Qwen 3 30B if the primary model is unavai
 * `POST /api/ai/analysis/:symbol` builds a grounded context from the Worker's live quote,
   performance, volatility, fundamentals, macro, sentiment, news and data-quality data,
   then asks the model for a structured JSON research brief.
+* `POST /api/ai/insights/:symbol` computes 12 deterministic technical indicators, key
+  support/resistance levels, sentiment and a 21-day Monte Carlo forecast, then asks the
+  model to interpret the trend, signals, risks and forecast uncertainty.
 * `POST /api/ai/chat` answers questions about the selected asset using the same context.
   The client sends only the conversation and a symbol; the model call stays server-side.
 * `GET /api/ai/status` reports whether the binding is configured and which models are

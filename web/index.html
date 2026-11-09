@@ -204,6 +204,11 @@
           <p class="lede">One view for price action, multi-horizon performance, relative strength, fundamentals, macro context, correlation and sentiment — every line computed locally.</p>
         </div>
         <div class="section-actions">
+          <form class="asset-search" id="research-search-form" role="search">
+            <label class="sr-only" for="research-search-input">Search any asset</label>
+            <input id="research-search-input" type="search" placeholder="Search any ticker, ETF, index, future or crypto…" autocomplete="off">
+            <button class="button ghost small" type="submit">Search</button>
+          </form>
           <label class="field compact">
             <span>Research asset</span>
             <select id="research-symbol"></select>
@@ -215,9 +220,27 @@
       <div class="stat-grid" id="research-stats"></div>
 
       <article class="card">
-        <div class="card-head"><div><h2>Multi-horizon scorecard</h2><p class="muted">Absolute return and excess return versus the S&amp;P 500</p></div><span class="pill" id="research-horizon-pill">—</span></div>
-        <div class="horizon-grid" id="research-horizons"></div>
+        <div class="card-head">
+          <div><h2>Price &amp; annotations</h2><p class="muted">SMA20, SMA50 and your saved notes. Enable Annotate, then click the chart to pin a note.</p></div>
+          <div class="section-actions">
+            <span class="pill" id="research-price-pill">—</span>
+            <button class="button ghost small" id="research-annotate" type="button" aria-pressed="false">Annotate</button>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="research-price-canvas" role="img" aria-label="Price chart with moving averages and annotations"></canvas></div>
+        <div class="annotation-list" id="research-annotations"></div>
       </article>
+
+      <div class="grid two">
+        <article class="card">
+          <div class="card-head"><div><h2>Multi-horizon scorecard</h2><p class="muted">Absolute return and excess return versus the S&amp;P 500</p></div><span class="pill" id="research-horizon-pill">—</span></div>
+          <div class="horizon-grid" id="research-horizons"></div>
+        </article>
+        <article class="card">
+          <div class="card-head"><div><h2>Technical indicators</h2><p class="muted">Deterministic 14-period signals from OHLCV</p></div><span class="pill" id="research-trend-pill">—</span></div>
+          <div class="indicator-grid" id="research-technical"></div>
+        </article>
+      </div>
 
       <div class="grid two">
         <article class="card">
@@ -440,6 +463,18 @@
           <p class="muted small ai-disclaimer">Generative AI can be wrong or incomplete. It is not personalized investment advice. Verify prices and material facts independently.</p>
         </article>
       </div>
+
+      <article class="card" id="ai-insights-card">
+        <div class="card-head">
+          <div>
+            <h2>Technical, sentiment &amp; simulation scan</h2>
+            <p class="muted">RSI, MACD, ATR, Bollinger, stochastic, Williams %R, ROC, VWAP, OBV, Aroon, volume and volatility, plus a 21-day probabilistic forecast interpreted by the model.</p>
+          </div>
+          <button class="button primary" id="ai-scan" type="button">Run AI scan</button>
+        </div>
+        <div class="chart-wrap" id="ai-insight-chart-wrap" hidden><canvas id="ai-insight-canvas" role="img" aria-label="Probabilistic forecast chart"></canvas></div>
+        <div id="ai-insights" class="ai-insights" aria-live="polite"></div>
+      </article>
     </section>
 
     <!-- Backtest -->

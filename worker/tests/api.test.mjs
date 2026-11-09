@@ -57,9 +57,9 @@ test('worker routes unsupported methods and missing assets safely', async () => 
   assert.match(await staticResponse.text(), /assets binding/i);
 });
 
-test('symbol resolution drops unknown and duplicate values', () => {
-  const symbols = resolveSymbols('spy,SPY,AAPL,NOT_A_REAL_TICKER');
-  assert.deepEqual(symbols, ['SPY', 'AAPL']);
+test('symbol resolution accepts arbitrary tickers, deduplicates and rejects unsafe values', () => {
+  const symbols = resolveSymbols('spy,SPY,AAPL,NOT_A_REAL_TICKER,bad symbol,ETH-USD,^GSPC');
+  assert.deepEqual(symbols, ['SPY', 'AAPL', 'NOT_A_REAL_TICKER', 'ETH-USD', '^GSPC']);
 });
 
 test('snapshot bypasses per-symbol cache calls to stay under the free subrequest limit', async () => {

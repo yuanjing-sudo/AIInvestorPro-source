@@ -3,9 +3,10 @@
 // view never holds an API key.
 
 import {
-  UNIVERSE, state, $, escapeHtml, formatPercent, dateShort, toast, sourceLabel,
+  state, $, escapeHtml, formatPercent, formatNumber, formatMoney, formatSignedPercent,
+  dateShort, toast, sourceLabel, fillSymbolSelect, makeChart, signClass,
 } from './shared.js';
-import { live, aiAnalysis, aiChat, aiStatus } from '../core/live.js';
+import { live, aiAnalysis, aiChat, aiInsights, aiStatus } from '../core/live.js';
 
 const SUGGESTIONS = [
   'What are the biggest risks in this setup?',
@@ -20,11 +21,15 @@ const aiState = {
   messages: [],
   analysis: null,
   meta: null,
+  insights: null,
+  insightsBusy: false,
   busy: false,
   statusAttempted: false,
   statusBusy: false,
   statusError: null,
 };
+
+let insightChart = null;
 
 let initialized = false;
 
@@ -63,7 +68,8 @@ function renderAnalysis() {
       <div class="ai-empty">
         <strong>AI Analyst needs the Cloudflare Workers deployment.</strong>
         <p>The static GitHub Pages build keeps the deterministic local engine. The live Worker exposes
-        <code>/api/ai/chat</code> and <code>/api/ai/analysis/:symbol</code> through the free Workers AI binding.</p>
+        <code>/api/ai/chat</code>, <code>/api/ai/analysis/:symbol</code> and
+        <code>/api/ai/insights/:symbol</code> through the free Workers AI binding.</p>
         <p class="muted small">Open the Worker URL to use generative analysis and chat.</p>
       </div>`;
     return;
@@ -134,6 +140,120 @@ function renderChat() {
   target.scrollTop = target.scrollHeight;
 }
 
+function percentText(value, digits = 1) {
+  if (typeof value === 'string' && value.trim()) return value;
+  return formatPercent(value, digits);
+}
+
+function indicatorCell(label, value, note = '', tone = '') {
+  return `<div class="ai-insight-cell"><span>${escapeHtml(label)}</span><strong class="${tone}">${value}</strong>${note ? `<small>${escapeHtml(note)}</small>` : ''}</div>`;
+}
+
+function renderInsightChart(forecast) {
+  const wrap = $('#ai-insight-chart-wrap');
+  if (!wrap) return;
+  if (!forecast?.labels?.length || !forecast?.median?.length) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const labels = forecast.labels.map((label) => dateShort(label));
+  const history = new Array(labels.length).fill(null);
+  (forecast.history ?? []).forEach((value, index) => { history[index] = value; });
+  if (!insightChart) {
+    insightChart = makeChart($('#ai-insight-canvas'), {
+      height: 260,
+      yFormat: (value) => formatMoney(value, 2),
+      xFormat: (label) => label,
+      showLegend: true,
+    });
+  }
+  const bands = (forecast.bands ?? []).slice(0, 2).map((band, index) => ({
+    name: `${band.level}% interval`,
+    band: [band.lower, band.upper],
+    color: index === 0 ? '#2ee6c5' : '#7dd3fc',
+    opacity: index === 0 ? 0.10 : 0.16,
+  }));
+  insightChart.setData({
+    labels,
+    markers: [{ index: Math.max(0, (forecast.history ?? []).length - 1), label: 'Forecast', color: '#f6c85f' }],
+    series: [
+      ...bands,
+      { name: aiState.symbol, values: history, color: '#2ee6c5', width: 2, area: true },
+      { name: 'Median path', values: forecast.median, color: '#f6c85f', width: 1.8, dashed: true },
+    ],
+    yFormat: (value) => formatMoney(value, 2),
+  });
+}
+
+function renderInsights() {
+  const target = $('#ai-insights');
+  if (!target) return;
+  if (!live.enabled) {
+    target.innerHTML = '<div class="ai-empty"><strong>Technical scan and simulation need the Worker.</strong><p>The static build keeps the local deterministic indicators in Research. Open the Cloudflare Worker for the AI interpretation and forecast.</p></div>';
+    $('#ai-insight-chart-wrap')?.setAttribute('hidden', '');
+    return;
+  }
+  if (aiState.insightsBusy && !aiState.insights) {
+    target.innerHTML = '<div class="ai-empty"><strong>Scanning technicals and running the simulation…</strong><p>Computing 10+ indicators, key levels, sentiment and a probabilistic path, then asking the model to interpret them.</p></div>';
+    return;
+  }
+  if (!aiState.insights) {
+    target.innerHTML = '<div class="ai-empty"><strong>Run a technical, sentiment and simulation scan.</strong><p>This combines deterministic indicators, a 21-day Monte Carlo forecast and a generative interpretation. Pick an asset above and press Run AI scan.</p></div>';
+    $('#ai-insight-chart-wrap')?.setAttribute('hidden', '');
+    return;
+  }
+  const payload = aiState.insights;
+  const indicators = payload.indicators ?? {};
+  const trend = payload.trend ?? { label: 'Sideways', score: 0, tone: 'warn' };
+  const levels = payload.levels ?? {};
+  const forecast = payload.forecast;
+  const analysis = payload.analysis ?? {};
+  const tone = trend.tone ?? (trend.label === 'Uptrend' ? 'good' : trend.label === 'Downtrend' ? 'bad' : 'warn');
+  const sentiment = payload.sentiment ?? { label: 'Neutral', score: 0 };
+  const cells = [
+    indicatorCell('RSI 14', formatNumber(indicators.rsi14, 1), indicators.rsi14 > 70 ? 'Overbought' : indicators.rsi14 < 30 ? 'Oversold' : 'Neutral', indicators.rsi14 > 70 ? 'warn' : indicators.rsi14 < 30 ? 'bad' : ''),
+    indicatorCell('MACD hist.', formatNumber(indicators.macdHistogram, 3), indicators.macdHistogram >= 0 ? 'Bullish' : 'Bearish', indicators.macdHistogram >= 0 ? 'good' : 'bad'),
+    indicatorCell('ATR 14', formatMoney(indicators.atr14, 2), indicators.atrPercent ? `${indicators.atrPercent} of price` : '', ''),
+    indicatorCell('Bollinger', indicators.bollingerPosition === null ? '—' : `${Math.round(indicators.bollingerPosition * 100)}%`, 'Position in bands', ''),
+    indicatorCell('Stochastic', formatNumber(indicators.stochastic14, 1), indicators.stochastic14 > 80 ? 'Overbought' : indicators.stochastic14 < 20 ? 'Oversold' : 'Neutral', indicators.stochastic14 > 80 ? 'warn' : indicators.stochastic14 < 20 ? 'bad' : ''),
+    indicatorCell('Williams %R', formatNumber(indicators.williamsR14, 1), indicators.williamsR14 > -20 ? 'Overbought' : indicators.williamsR14 < -80 ? 'Oversold' : 'Neutral', indicators.williamsR14 > -20 ? 'warn' : indicators.williamsR14 < -80 ? 'bad' : ''),
+    indicatorCell('ROC 10', percentText(indicators.roc10Percent, 2), 'Momentum', String(indicators.roc10Percent).startsWith('-') ? 'bad' : 'good'),
+    indicatorCell('VWAP 20', formatMoney(indicators.vwap20, 2), indicators.price >= indicators.vwap20 ? 'Above VWAP' : 'Below VWAP', indicators.price >= indicators.vwap20 ? 'good' : 'bad'),
+    indicatorCell('OBV', formatNumber(indicators.obv, 0), 'On-balance volume', ''),
+    indicatorCell('Aroon Up', formatNumber(indicators.aroonUp25, 1), indicators.aroonUp25 > 70 ? 'Strong trend' : indicators.aroonUp25 < 30 ? 'Weak trend' : 'Transition', indicators.aroonUp25 > 70 ? 'good' : indicators.aroonUp25 < 30 ? 'bad' : ''),
+    indicatorCell('Volume ratio', indicators.volumeRatio === null ? '—' : `${indicators.volumeRatio.toFixed(2)}×`, 'vs 20d average', indicators.volumeRatio > 1.4 ? 'good' : ''),
+    indicatorCell('Realized vol.', percentText(indicators.realizedVolatility21dPercent, 1), '21 trading days', parseFloat(indicators.realizedVolatility21dPercent) > 35 ? 'warn' : ''),
+  ].join('');
+  target.innerHTML = `
+    <div class="ai-insight-head">
+      <span class="pill ${tone}">${escapeHtml(trend.label)} · ${formatNumber(trend.score, 0)}</span>
+      <span class="pill ${sentiment.score > 0.2 ? 'good' : sentiment.score < -0.2 ? 'bad' : ''}">Sentiment ${escapeHtml(sentiment.label)} ${sentiment.score >= 0 ? '+' : ''}${Number(sentiment.score ?? 0).toFixed(2)}</span>
+      <span class="muted">Support ${formatMoney(levels.support20, 2)} · Resistance ${formatMoney(levels.resistance20, 2)}</span>
+      <span class="muted">${escapeHtml(sourceLabel(payload.source ?? 'server'))} · ${escapeHtml(shortModel(payload.model))}</span>
+    </div>
+    <div class="ai-insight-grid">${cells}</div>
+    ${forecast ? `<div class="ai-insight-grid">
+      ${indicatorCell('Expected price', formatMoney(forecast.expectedPrice, 2), `${formatSignedPercent(forecast.expectedReturn, 1)} median`, signClass(forecast.expectedReturn))}
+      ${indicatorCell('Probability up', formatPercent(forecast.probabilityUp, 1), `${forecast.horizon}-day horizon`, forecast.probabilityUp >= 0.5 ? 'good' : 'bad')}
+      ${indicatorCell('VaR 95', formatMoney(forecast.var95, 2), 'Downside loss at 95%', 'bad')}
+      ${indicatorCell('Model confidence', `${formatNumber(forecast.confidence, 0)}/100`, 'Walk-forward blend', '')}
+      ${indicatorCell('Annual vol.', formatPercent(forecast.annualVolatility, 1), forecast.regime?.label ?? 'Regime', '')}
+    </div>` : ''}
+    <div class="ai-insight-columns">
+      ${section('AI interpretation', analysis.summary)}
+      ${section('Trend read', analysis.trend)}
+      ${section('Sentiment read', analysis.sentiment)}
+    </div>
+    <div class="ai-insight-columns">
+      ${list('Signals', analysis.signals)}
+      ${list('Risks', analysis.risks)}
+      <div class="ai-analysis-section"><span>Levels &amp; forecast</span><p>${formatText(analysis.levels)}</p><p>${formatText(analysis.forecast)}</p></div>
+    </div>
+    <p class="muted small ai-disclaimer">${formatText(analysis.disclaimer ?? 'Probabilistic simulation. Not investment advice.')}</p>`;
+  renderInsightChart(forecast);
+}
+
 function renderStatus() {
   const pill = $('#ai-status-pill');
   const badge = $('#ai-model-badge');
@@ -148,14 +268,16 @@ function renderStatus() {
       : 'Not connected';
     badge.title = live.ai?.models?.primary ?? '';
   }
-  for (const selector of ['#ai-generate', '#ai-send', '#ai-input']) {
+  for (const selector of ['#ai-generate', '#ai-send', '#ai-input', '#ai-scan']) {
     const element = $(selector);
-    if (element) element.disabled = !ok || aiState.busy;
+    if (element) element.disabled = !ok || aiState.busy || aiState.insightsBusy;
   }
   const generate = $('#ai-generate');
   if (generate) generate.classList.toggle('is-busy', aiState.busy && !aiState.analysis);
   const send = $('#ai-send');
   if (send) send.classList.toggle('is-busy', aiState.busy);
+  const scan = $('#ai-scan');
+  if (scan) scan.classList.toggle('is-busy', aiState.insightsBusy);
 }
 
 export function renderAI() {
@@ -181,6 +303,7 @@ export function renderAI() {
   }
   renderStatus();
   renderAnalysis();
+  renderInsights();
   renderChat();
 }
 
@@ -242,26 +365,50 @@ async function send() {
   }
 }
 
+async function runInsights() {
+  if (!available() || aiState.insightsBusy) return;
+  aiState.insightsBusy = true;
+  aiState.insights = null;
+  renderAI();
+  try {
+    const payload = await aiInsights(aiState.symbol, { horizon: 21, simulations: 1200, seed: 7 });
+    aiState.insights = payload;
+    live.ai = {
+      ...(live.ai ?? {}),
+      enabled: true,
+      provider: payload.provider,
+      model: payload.model,
+      models: { ...(live.ai?.models ?? {}), primary: payload.model },
+    };
+    toast(`Technical scan and simulation complete for ${aiState.symbol}`);
+  } catch (error) {
+    toast(`Technical scan failed: ${error?.message ?? 'unknown error'}`);
+  } finally {
+    aiState.insightsBusy = false;
+    renderAI();
+  }
+}
+
 export function initAI() {
   if (initialized) return;
   const select = $('#ai-symbol');
   if (!select) return;
-  select.innerHTML = UNIVERSE
-    .map((asset) => `<option value="${asset.symbol}">${asset.symbol} · ${escapeHtml(asset.name)}</option>`)
-    .join('');
-  select.value = aiState.symbol;
+  fillSymbolSelect(select, aiState.symbol);
   select.addEventListener('change', () => {
     aiState.symbol = select.value;
     aiState.analysis = null;
     aiState.meta = null;
+    aiState.insights = null;
     aiState.messages = [];
     renderAI();
   });
   $('#ai-generate')?.addEventListener('click', generate);
+  $('#ai-scan')?.addEventListener('click', runInsights);
   $('#ai-clear')?.addEventListener('click', () => {
     aiState.messages = [];
     aiState.analysis = null;
     aiState.meta = null;
+    aiState.insights = null;
     renderAI();
   });
   $('#ai-chat-form')?.addEventListener('submit', (event) => {
@@ -290,6 +437,14 @@ export function initAI() {
   document.addEventListener('ik:market-updated', () => {
     if (live.ai?.models) aiState.statusAttempted = true;
     renderAI();
+  });
+  document.addEventListener('ik:assets-updated', () => fillSymbolSelect(select, aiState.symbol));
+  document.addEventListener('ik:symbol-updated', (event) => {
+    if (event.detail?.symbol === aiState.symbol) {
+      aiState.analysis = null;
+      aiState.insights = null;
+      renderAI();
+    }
   });
   if (live.ai?.models) aiState.statusAttempted = true;
   initialized = true;

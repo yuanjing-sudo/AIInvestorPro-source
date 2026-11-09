@@ -2,9 +2,9 @@
 // walk-forward diagnostics, scenario analysis and feature attribution.
 
 import {
-  UNIVERSE, candleMap, quotes, quality, fundamentals, news, macro, state, $,
+  candleMap, quotes, quality, fundamentals, news, macro, state, $,
   escapeHtml, dateShort, formatMoney, formatMoneyCompact, formatPercent,
-  formatSignedPercent, formatNumber, signClass, makeChart, statCard, toast,
+  formatSignedPercent, formatNumber, signClass, makeChart, statCard, toast, fillSymbolSelect,
 } from './shared.js';
 import { buildForecast } from '../core/forecast.js';
 import { sentimentSummary } from '../core/marketdata.js';
@@ -18,10 +18,7 @@ export function initForecast() {
   const select = $('#fc-symbol');
   const form = $('#forecast-form');
   if (!select || !form) return;
-  select.innerHTML = UNIVERSE
-    .map((asset) => `<option value="${asset.symbol}">${asset.symbol} · ${escapeHtml(asset.name)}</option>`)
-    .join('');
-  select.value = state.forecast.symbol;
+  fillSymbolSelect(select, state.forecast.symbol);
   $('#fc-horizon').value = String(state.forecast.horizon);
   $('#fc-mode').value = state.forecast.mode;
   $('#fc-sims').value = String(state.forecast.simulations);
@@ -37,6 +34,10 @@ export function initForecast() {
   document.addEventListener('ik:market-updated', () => {
     if (state.tab === 'forecast' || !lastForecast?.server) runForecast();
   });
+  document.addEventListener('ik:symbol-updated', (event) => {
+    if (event.detail?.symbol === state.forecast.symbol) runForecast();
+  });
+  document.addEventListener('ik:assets-updated', () => fillSymbolSelect(select, state.forecast.symbol));
   runForecast();
 }
 

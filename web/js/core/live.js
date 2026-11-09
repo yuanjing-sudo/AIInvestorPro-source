@@ -84,6 +84,10 @@ export async function fetchMacro() {
   return request('/macro', {}, 20000);
 }
 
+export async function searchAssets(query) {
+  return request('/search', { q: query }, 12000);
+}
+
 export async function fetchSymbol(symbol, options = {}) {
   return request(`/quote/${encodeURIComponent(symbol)}`, {
     range: options.range ?? '2y',
@@ -115,5 +119,12 @@ export async function aiChat(messages, options = {}) {
   return request('/ai/chat', {}, 60000, {
     method: 'POST',
     body: { messages, symbol: options.symbol },
+  });
+}
+
+export async function aiInsights(symbol, options = {}) {
+  return request(`/ai/insights/${encodeURIComponent(symbol)}`, {}, 60000, {
+    method: 'POST',
+    body: { horizon: options.horizon, simulations: options.simulations, seed: options.seed },
   });
 }

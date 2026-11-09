@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleApi } from '../src/index.js';
 import {
-  AI_MODELS, aiStatus, chatWithAi, parseAnalysis, sanitizeMessages, summarizeMarketContext,
+  AI_MODELS, aiStatus, chatWithAi, generateInsights, parseAnalysis, parseInsights,
+  sanitizeMessages, summarizeMarketContext,
 } from '../src/ai.js';
 
 function jsonResponse(payload, status = 200) {
@@ -41,11 +42,43 @@ function sampleYahooPayload() {
   };
 }
 
-async function withYahooFetch(run) {
+function longYahooPayload(count = 300) {
+  const timestamp = [];
+  const open = [];
+  const high = [];
+  const low = [];
+  const close = [];
+  const volume = [];
+  for (let index = 0; index < count; index += 1) {
+    const base = 100 + index * 0.18 + Math.sin(index / 9) * 2.5;
+    timestamp.push(1_690_000_000 + index * 86_400);
+    open.push(base - 0.4);
+    high.push(base + 1.2);
+    low.push(base - 1.1);
+    close.push(base);
+    volume.push(1_000_000 + (index % 17) * 50_000);
+  }
+  return {
+    chart: {
+      result: [{
+        meta: {
+          symbol: 'SPY', currency: 'USD', fullExchangeName: 'NYSEArca',
+          instrumentType: 'ETF', exchangeTimezoneName: 'America/New_York',
+          regularMarketPrice: close.at(-1), fiftyTwoWeekHigh: Math.max(...high),
+          fiftyTwoWeekLow: Math.min(...low), longName: 'SPDR S&P 500 ETF Trust',
+        },
+        timestamp,
+        indicators: { quote: [{ open, high, low, close, volume }] },
+      }],
+    },
+  };
+}
+
+async function withYahooFetch(run, payload = sampleYahooPayload()) {
   const original = globalThis.fetch;
   globalThis.fetch = async (input) => {
     if (String(input).includes('query1.finance.yahoo.com')) {
-      return jsonResponse(sampleYahooPayload());
+      return jsonResponse(payload);
     }
     throw new Error(`unexpected fetch ${input}`);
   };
@@ -143,6 +176,52 @@ test('analysis endpoint generates structured JSON from grounded context', async 
     assert.equal(payload.analysis.format, 'json');
     assert.equal(payload.quality.synthetic, false);
   });
+});
+
+test('insights endpoint returns indicators, trend, simulation and AI interpretation', async () => {
+  const env = aiEnv(async () => ({
+    response: JSON.stringify({
+      summary: 'Momentum is positive but extended.',
+      trend: 'Constructive uptrend with a short-term overbought risk.',
+      sentiment: 'Neutral-to-positive.',
+      signals: ['Price above SMA20', 'MACD above signal'],
+      risks: ['Mean reversion', 'Volatility expansion'],
+      levels: 'Support near the 20-day low; resistance near the recent high.',
+      forecast: 'The median path is modestly higher, with wide 95% intervals.',
+      confidence: 0.61,
+      disclaimer: 'Educational only.',
+    }),
+  }));
+  await withYahooFetch(async () => {
+    const request = new Request('https://investor-kit.example/api/ai/insights/SPY', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ horizon: 21, simulations: 300, seed: 7 }),
+    });
+    const response = await handleApi(request, env, new URL(request.url));
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.symbol, 'SPY');
+    assert.equal(typeof payload.indicators.rsi14, 'number');
+    assert.equal(typeof payload.indicators.macdHistogram, 'number');
+    assert.match(payload.indicators.realizedVolatility21dPercent, /%$/);
+    assert.ok(['Uptrend', 'Downtrend', 'Sideways'].includes(payload.trend.label));
+    assert.equal(payload.forecast.horizon, 21);
+    assert.ok(Array.isArray(payload.forecast.labels));
+    assert.ok(payload.forecast.labels.length > payload.forecast.history.length);
+    assert.equal(payload.analysis.format, 'json');
+    assert.deepEqual(payload.analysis.signals, ['Price above SMA20', 'MACD above signal']);
+    assert.equal(payload.analysis.confidence, 0.61);
+  }, longYahooPayload());
+});
+
+test('insights parser tolerates fenced JSON and clamps confidence', () => {
+  const parsed = parseInsights('```json\n{"summary":"Scan","trend":"up","confidence":4,"signals":["a"]}\n```');
+  assert.equal(parsed.summary, 'Scan');
+  assert.equal(parsed.confidence, 1);
+  assert.deepEqual(parsed.signals, ['a']);
+  const text = parseInsights('Plain scan');
+  assert.equal(text.format, 'text');
 });
 
 test('AI context formats percentages and flags synthetic fundamentals', () => {

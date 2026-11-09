@@ -2,10 +2,10 @@
 // correlation, sentiment and data-quality coverage for one asset.
 
 import {
-  UNIVERSE, quotes, candleMap, fundamentals, news, quality, sources, macro, market,
-  assetsBySymbol, returnsBySymbol, state, $, escapeHtml, dateShort, sourceLabel,
+  quotes, candleMap, fundamentals, news, quality, sources, macro, market,
+  assetsBySymbol, returnsBySymbol, indicators, state, $, escapeHtml, dateShort, sourceLabel,
   formatMoney, formatMoneyCompact, formatPercent, formatSignedPercent,
-  formatNumber, formatCompact, signClass, makeChart, statCard, toast,
+  formatNumber, formatCompact, signClass, makeChart, statCard, toast, fillSymbolSelect,
 } from './shared.js';
 import { analyzeReturns, drawdownSeries } from '../core/analytics.js';
 import { correlationMatrix, beta } from '../core/risk.js';
@@ -13,25 +13,199 @@ import {
   performanceWindows, historicalVolatility, pricePercentile, sentimentSummary,
   drawdownSeriesFromCandles,
 } from '../core/marketdata.js';
+import { sma } from '../core/indicators.js';
 
 let relativeChart = null;
 let drawdownChart = null;
+let priceChart = null;
+let annotateMode = false;
+
+const ANNOTATIONS_KEY = 'ik.annotations.v1';
+const ANNOTATION_COLORS = ['#f6c85f', '#2ee6c5', '#7dd3fc', '#f0abfc', '#fda4af', '#a3e635'];
+
+function readAnnotations() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(ANNOTATIONS_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAnnotations(all) {
+  try {
+    localStorage.setItem(ANNOTATIONS_KEY, JSON.stringify(all));
+  } catch {
+    // Storage can be unavailable in private modes; annotations remain in memory.
+  }
+}
+
+function symbolAnnotations(symbol) {
+  const all = readAnnotations();
+  return Array.isArray(all[symbol]) ? all[symbol] : [];
+}
+
+function saveSymbolAnnotations(symbol, items) {
+  const all = readAnnotations();
+  all[symbol] = items.slice(-40);
+  writeAnnotations(all);
+}
+
+function annotationColor(index) {
+  return ANNOTATION_COLORS[index % ANNOTATION_COLORS.length];
+}
+
+function renderAnnotationList(symbol, labels) {
+  const target = $('#research-annotations');
+  if (!target) return;
+  const items = symbolAnnotations(symbol);
+  if (!items.length) {
+    target.innerHTML = '<span class="muted small">No notes yet. Enable Annotate and click the chart to add one.</span>';
+    return;
+  }
+  target.innerHTML = items.map((item) => {
+    const index = labels.indexOf(item.date);
+    const price = index >= 0 ? ` · bar ${index + 1}` : ' · outside current window';
+    return `<span class="annotation-chip" style="--annotation-color:${item.color || '#f6c85f'}">
+      <span>${escapeHtml(item.label)}</span>
+      <small>${escapeHtml(item.date)}${price}</small>
+      <button type="button" class="annotation-remove" data-annotation-id="${escapeHtml(item.id)}" aria-label="Remove annotation">×</button>
+    </span>`;
+  }).join('');
+}
+
+function renderPriceChart(symbol, candles, quote, vol) {
+  const slice = candles.slice(-252);
+  const labels = slice.map((candle) => dateShort(candle.date));
+  const closes = slice.map((candle) => candle.close);
+  if (!priceChart) {
+    priceChart = makeChart($('#research-price-canvas'), {
+      height: 300,
+      yFormat: (value) => formatMoney(value, 2),
+      xFormat: (label) => label,
+      showLegend: true,
+      onClick: ({ label, value }) => {
+        if (!annotateMode) return;
+        const text = window.prompt(`Annotation for ${symbol} on ${label}:`, '');
+        if (!text?.trim()) return;
+        const items = symbolAnnotations(symbol);
+        items.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          date: label,
+          label: text.trim().slice(0, 120),
+          price: Number.isFinite(value) ? Number(value.toFixed(2)) : null,
+          color: annotationColor(items.length),
+        });
+        saveSymbolAnnotations(symbol, items);
+        renderPriceChart(symbol, candles, quote, vol);
+        toast(`Annotation saved for ${symbol}`);
+      },
+    });
+  }
+  const saved = symbolAnnotations(symbol);
+  const annotations = saved
+    .map((item) => ({ ...item, index: labels.indexOf(item.date) }))
+    .filter((item) => item.index >= 0);
+  priceChart.setData({
+    labels,
+    annotations,
+    series: [
+      { name: symbol, values: closes, color: '#2ee6c5', width: 2, area: true },
+      { name: 'SMA20', values: sma(closes, 20), color: '#7dd3fc', width: 1.3, silent: true },
+      { name: 'SMA50', values: sma(closes, 50), color: '#f6c85f', width: 1.2, silent: true },
+    ],
+    yFormat: (value) => formatMoney(value, 2),
+  });
+  const pill = $('#research-price-pill');
+  if (pill) pill.textContent = `${formatMoney(quote.price, 2)} · ${formatPercent(vol, 1)} vol · ${saved.length} notes`;
+  renderAnnotationList(symbol, labels);
+}
+
+function technicalRows(symbol, quote, vol) {
+  const row = indicators[symbol] ?? {};
+  const price = quote?.price ?? 0;
+  const bollinger = row.bollinger ?? {};
+  const bollingerRange = Number.isFinite(bollinger.upper) && Number.isFinite(bollinger.lower)
+    ? bollinger.upper - bollinger.lower
+    : 0;
+  const bollingerPosition = bollingerRange > 0 ? (price - bollinger.lower) / bollingerRange : null;
+  const macdHistogram = (row.macd ?? 0) - (row.macdSignal ?? 0);
+  const volumeRatio = row.meanVolume > 0 ? (candleMap[symbol]?.at(-1)?.volume ?? 0) / row.meanVolume : null;
+  return [
+    { label: 'RSI · 14', value: formatNumber(row.rsi, 1), note: row.rsi > 70 ? 'Overbought' : row.rsi < 30 ? 'Oversold' : 'Neutral', tone: row.rsi > 70 ? 'warn' : row.rsi < 30 ? 'bad' : '' },
+    { label: 'MACD hist.', value: formatNumber(macdHistogram, 3), note: macdHistogram >= 0 ? 'Bullish' : 'Bearish', tone: macdHistogram >= 0 ? 'good' : 'bad' },
+    { label: 'ATR · 14', value: formatMoney(row.atr, 2), note: `${formatPercent(price ? row.atr / price : null, 2)} of price`, tone: '' },
+    { label: 'Bollinger pos.', value: bollingerPosition === null ? '—' : `${(bollingerPosition * 100).toFixed(0)}%`, note: bollingerPosition > 0.9 ? 'Upper band' : bollingerPosition < 0.1 ? 'Lower band' : 'Inside bands', tone: bollingerPosition > 0.9 ? 'warn' : bollingerPosition < 0.1 ? 'bad' : '' },
+    { label: 'Stochastic', value: formatNumber(row.stochastic, 1), note: row.stochastic > 80 ? 'Overbought' : row.stochastic < 20 ? 'Oversold' : 'Neutral', tone: row.stochastic > 80 ? 'warn' : row.stochastic < 20 ? 'bad' : '' },
+    { label: 'Williams %R', value: formatNumber(row.williams, 1), note: row.williams > -20 ? 'Overbought' : row.williams < -80 ? 'Oversold' : 'Neutral', tone: row.williams > -20 ? 'warn' : row.williams < -80 ? 'bad' : '' },
+    { label: 'ROC · 10', value: formatPercent(row.roc, 2), note: row.roc >= 0 ? 'Positive momentum' : 'Negative momentum', tone: row.roc >= 0 ? 'good' : 'bad' },
+    { label: 'VWAP · 20', value: formatMoney(row.vwap, 2), note: price >= row.vwap ? 'Price above VWAP' : 'Price below VWAP', tone: price >= row.vwap ? 'good' : 'bad' },
+    { label: 'OBV', value: formatCompact(row.obv), note: 'On-balance volume', tone: '' },
+    { label: 'Aroon Up · 25', value: formatNumber(row.aroon, 1), note: row.aroon > 70 ? 'Strong trend' : row.aroon < 30 ? 'Weak trend' : 'Transition', tone: row.aroon > 70 ? 'good' : row.aroon < 30 ? 'bad' : '' },
+    { label: 'Volume ratio', value: volumeRatio === null ? '—' : `${volumeRatio.toFixed(2)}×`, note: volumeRatio > 1.4 ? 'Volume expansion' : volumeRatio < 0.7 ? 'Volume contraction' : 'Normal', tone: volumeRatio > 1.4 ? 'good' : '' },
+    { label: 'Realized vol.', value: formatPercent(vol, 1), note: '21 trading days', tone: vol > 0.35 ? 'warn' : '' },
+  ];
+}
+
+function renderTechnical(symbol, quote, vol) {
+  const target = $('#research-technical');
+  if (!target) return;
+  const rows = technicalRows(symbol, quote, vol);
+  target.innerHTML = rows.map((row) => `<div class="indicator-cell">
+    <span>${escapeHtml(row.label)}</span>
+    <strong class="${row.tone}">${row.value}</strong>
+    <small>${escapeHtml(row.note)}</small>
+  </div>`).join('');
+  const trend = $('#research-trend-pill');
+  if (trend) {
+    const close = quote?.price ?? 0;
+    const row = indicators[symbol] ?? {};
+    const bullish = close > row.sma20 && row.sma20 > row.sma50;
+    const bearish = close < row.sma20 && row.sma20 < row.sma50;
+    trend.textContent = bullish ? 'Uptrend' : bearish ? 'Downtrend' : 'Sideways';
+    trend.className = `pill ${bullish ? 'good' : bearish ? 'bad' : 'warn'}`;
+  }
+}
 
 const PEERS = ['SPY', 'QQQ', 'TLT', 'GLD', 'BTC-USD', 'AAPL', 'JPM', 'XOM'];
 
 export function initResearch() {
   const select = $('#research-symbol');
   if (!select) return;
-  select.innerHTML = UNIVERSE
-    .map((asset) => `<option value="${asset.symbol}">${asset.symbol} · ${escapeHtml(asset.name)}</option>`)
-    .join('');
-  select.value = state.research.symbol;
+  fillSymbolSelect(select, state.research.symbol);
   select.addEventListener('change', () => {
     state.research.symbol = select.value;
     renderResearch();
   });
   $('#research-export')?.addEventListener('click', exportSnapshot);
+  $('#research-annotate')?.addEventListener('click', () => {
+    annotateMode = !annotateMode;
+    const button = $('#research-annotate');
+    if (button) {
+      button.setAttribute('aria-pressed', String(annotateMode));
+      button.classList.toggle('primary', annotateMode);
+    }
+    toast(annotateMode ? 'Annotation mode on · click the price chart to add a note' : 'Annotation mode off');
+  });
+  $('#research-annotations')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-annotation-id]');
+    if (!button) return;
+    const symbol = state.research.symbol;
+    const items = symbolAnnotations(symbol).filter((item) => item.id !== button.dataset.annotationId);
+    saveSymbolAnnotations(symbol, items);
+    renderResearch();
+    toast('Annotation removed');
+  });
+  $('#research-search-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = $('#research-search-input')?.value.trim();
+    if (query) document.dispatchEvent(new CustomEvent('ik:open-search', { detail: { query } }));
+  });
   document.addEventListener('ik:market-updated', renderResearch);
+  document.addEventListener('ik:symbol-updated', (event) => {
+    if (event.detail?.symbol === state.research.symbol) renderResearch();
+  });
+  document.addEventListener('ik:assets-updated', () => fillSymbolSelect(select, state.research.symbol));
   renderResearch();
 }
 
@@ -153,6 +327,7 @@ export function renderResearch() {
     yFormat: (value) => formatPercent(value, 0),
   });
 
+  renderPriceAndTechnical(symbol, candles, quote, vol);
   renderFundamentals(symbol, basics, quote);
   renderMacro();
   renderCorrelation(symbol);
@@ -216,6 +391,11 @@ function renderFundamentals(symbol, basics, quote) {  const asset = assetsBySymb
   $('#research-fund-note').textContent = `${asset.name} · ${asset.sector} · ${basics.kind.toUpperCase()} · synthetic fundamentals`;
   $('#research-rating').textContent = `${basics.analystRating} · ${basics.analystCount} analysts`;
   $('#research-rating').className = `pill ${basics.analystUpside > 0 ? 'good' : 'bad'}`;
+}
+
+function renderPriceAndTechnical(symbol, candles, quote, vol) {
+  renderPriceChart(symbol, candles, quote, vol);
+  renderTechnical(symbol, quote, vol);
 }
 
 function renderMacro() {

@@ -16,7 +16,8 @@ deterministic local feed.
 | --- | --- | --- |
 | `GET /api/health` | Runtime/version probe used by the client | 30s |
 | `GET /api/sources` | Provider catalog: active, optional and unavailable sources | 1h |
-| `GET /api/universe` | The 26-asset research universe | 1h |
+| `GET /api/search?q=apple` | Yahoo Finance symbol search for equities, ETFs, indices, futures, FX and crypto | 5m |
+| `GET /api/universe` | The 26-asset default research universe | 1h |
 | `GET /api/market?symbols=SPY,QQQ&range=2y` | Snapshot of candles, quotes, fundamentals, news, quality and macro | 60s |
 | `GET /api/quote/SPY?range=2y` | One asset with OHLCV, profile, fundamentals, sentiment and quality | 60s |
 | `GET /api/forecast/SPY?horizon=21&simulations=2000&seed=7` | Runs the shared forecast ensemble on the server | 120s |
@@ -24,6 +25,7 @@ deterministic local feed.
 | `GET /api/ai/status` | AI provider, model registry and binding status | 60s |
 | `POST /api/ai/chat` | Grounded chat with the selected asset context | none |
 | `POST /api/ai/analysis/:symbol` | Generative structured research brief for one asset | none |
+| `POST /api/ai/insights/:symbol` | 12 technical indicators, trend/levels/sentiment, 21-day simulation and generative interpretation | none |
 
 The Worker imports the same `web/js/core/forecast.js`, `marketdata.js`,
 `indicators.js` and related modules used by the browser. There is no second
@@ -31,7 +33,9 @@ implementation of the numerical engine.
 
 ### Data flow
 
-1. The Worker validates the symbol against the 26-asset allowlist.
+1. The Worker validates the symbol's character set and accepts arbitrary Yahoo
+   Finance tickers. The 26-asset list is only the default snapshot universe; a
+   symbol loaded from `/api/search` is resolved on demand.
 2. Equities and ETFs request Yahoo Finance's public chart endpoint. Crypto
    symbols try Coinbase first, then CoinGecko, DefiLlama, Yahoo and finally the
    deterministic feed. Macro requests use FRED CSV series plus Yahoo proxies.
@@ -44,7 +48,9 @@ implementation of the numerical engine.
    The service worker never caches `/api/*`.
 5. The **AI Analyst** tab calls the Worker's AI routes. The Worker builds a
    compact context from the same symbol payload and sends it to Cloudflare
-   Workers AI. The browser never receives an API key or calls a model directly.
+   Workers AI. The technical scan also computes 12 deterministic indicators and
+   a 21-day simulation before asking the model to interpret them. The browser
+   never receives an API key or calls a model directly.
 
 No API key is required for the default chain. Yahoo is an unofficial endpoint:
 it may be delayed, rate-limited or changed by Yahoo. Coinbase, CoinGecko,
@@ -83,7 +89,9 @@ how many symbols each provider served.
 The AI layer is in [`src/ai.js`](src/ai.js). It:
 
 * validates and caps chat messages (16 messages, 4,000 characters each);
-* builds analysis/chat prompts from a compact server-side market context;
+* builds analysis/chat/insight prompts from a compact server-side market context;
+* computes RSI, MACD, ATR, Bollinger, stochastic, Williams %R, ROC, VWAP, OBV,
+  Aroon, volume ratio and realized volatility for `/api/ai/insights/:symbol`;
 * asks the model for JSON and normalizes/validates the response;
 * tries the primary, fallback and fast models in order;
 * returns provider/model metadata and keeps all model calls server-side.
@@ -112,10 +120,11 @@ cd worker
 npm test
 ```
 
-They cover symbol validation, Yahoo/Coinbase/CoinGecko/DefiLlama/FRED parsing,
-optional keyed providers, routing, the asset binding fallback, provider selection,
-the deterministic fallback when upstream is unreachable, AI status/chat/analysis,
-JSON parsing, model fallback and message validation.
+They cover symbol validation, Yahoo search parsing, Yahoo/Coinbase/CoinGecko/
+DefiLlama/FRED parsing, optional keyed providers, routing, the asset binding
+fallback, provider selection, the deterministic fallback when upstream is
+unreachable, AI status/chat/analysis/insights, JSON parsing, model fallback and
+message validation.
 
 ## Deploy
 

@@ -83,6 +83,7 @@ One Worker serves this `web/` directory and exposes live JSON endpoints:
 ```text
 /api/health
 /api/sources
+/api/search?q=apple
 /api/market?symbols=SPY,QQQ&range=2y
 /api/quote/SPY
 /api/forecast/SPY?horizon=21&simulations=2000&seed=7
@@ -90,6 +91,7 @@ One Worker serves this `web/` directory and exposes live JSON endpoints:
 /api/ai/status
 /api/ai/chat                 (POST)
 /api/ai/analysis/SPY         (POST)
+/api/ai/insights/SPY         (POST)
 ```
 
 ```bash
@@ -112,12 +114,33 @@ responses.
 ### AI Analyst
 
 Workers mode also enables the **AI Analyst** tab. It calls the Worker's
-`/api/ai/analysis/:symbol` and `/api/ai/chat` routes, which use the free
-Cloudflare Workers AI binding. The model receives a compact server-built context
-from the selected asset (quote, performance, volatility, fundamentals, macro,
-sentiment, news and data quality) and returns a structured brief or chat reply.
-No model API key is shipped to the browser. The static Pages build keeps the
-deterministic engine and explains that generative AI requires the Worker.
+`/api/ai/analysis/:symbol`, `/api/ai/insights/:symbol` and `/api/ai/chat` routes,
+which use the free Cloudflare Workers AI binding. The model receives a compact
+server-built context from the selected asset (quote, performance, volatility,
+fundamentals, macro, sentiment, news and data quality) and returns a structured
+brief or chat reply. The **Technical, sentiment & simulation scan** adds 12
+deterministic indicators (RSI, MACD histogram, ATR, Bollinger position,
+stochastic, Williams %R, ROC, VWAP, OBV, Aroon, volume ratio and realized
+volatility), key support/resistance levels, a 21-day Monte Carlo forecast and a
+generative interpretation. No model API key is shipped to the browser. The
+static Pages build keeps the deterministic engine, technical indicators and
+forecast studio, and explains that generative AI requires the Worker.
+
+### Search any asset
+
+The 26-asset board is the default universe, but the search field is not limited
+to it. In Workers mode, `/api/search?q=` queries Yahoo Finance's public search
+endpoint for equities, ETFs, indices, futures, FX and crypto pairs. Selecting a
+result loads `/api/quote/:symbol`, adds the asset to the in-memory universe and
+opens the full Research terminal. The Research search field opens the same
+global palette, and the direct-ticker fallback lets you load an exact symbol even
+if search is temporarily unavailable. Dynamic assets are loaded on demand, so
+the default snapshot stays under the Workers Free subrequest budget.
+
+The Research terminal includes a price chart with SMA20/SMA50 and click-to-add
+annotations. Annotations are saved per symbol in `localStorage` and can be
+removed from the annotation list. The technical-indicator grid works in both the
+static and Workers builds.
 
 Automatic deployment is configured in
 [`../.github/workflows/cloudflare.yml`](../.github/workflows/cloudflare.yml).
@@ -134,7 +157,8 @@ asset set excludes tests, scripts, server code and package metadata.
 | Tab | What it does |
 | --- | --- |
 | Dashboard | Portfolio value/P&L, 26-asset market board, price chart with SMA 20/50, signal board, market ribbon |
-| Research | Multi-horizon scorecard, relative strength, drawdown, fundamentals, macro, correlation heatmap, news sentiment, data-quality audit, JSON export |
+| Research | Price chart with SMA20/SMA50 and saved annotations, technical-indicator grid, multi-horizon scorecard, relative strength, drawdown, fundamentals, macro, correlation heatmap, news sentiment, data-quality audit, JSON export |
+| AI Analyst | Generative research briefs and grounded chat; 12-indicator technical/sentiment scan, key levels and 21-day probabilistic forecast with a forecast chart (Workers mode) |
 | Forecast | Drift + Holt + ridge-factor ensemble, Monte Carlo cones (50/80/95%), scenario matrix, terminal distribution, walk-forward diagnostics, feature attribution |
 | Backtest | 9 strategies, next-open execution, commission/slippage, equity/drawdown charts, trade log |
 | Optimize | Max Sharpe, min variance, risk parity, max diversification, weight cap, efficient frontier |
@@ -144,18 +168,21 @@ asset set excludes tests, scripts, server code and package metadata.
 | Alerts | Price, daily change, RSI and volume rules, cooldown, local trigger history |
 | Platform | Installation instructions and architecture notes |
 
-A command palette (`Ctrl/Cmd+K` or `/`) jumps to any page or asset. The layout
-uses a desktop sidebar, a sticky market ribbon, a global search field, keyboard
-shortcuts and a five-item mobile navigation bar.
+A command palette (`Ctrl/Cmd+K` or `/`) jumps to any page or asset and searches
+Yahoo Finance in Workers mode. The Research search field opens the same palette.
+The layout uses a desktop sidebar, a sticky market ribbon, keyboard shortcuts and
+a five-item mobile navigation bar.
 
-The data foundation includes 26 assets across equities, ETFs, fixed income,
-commodities, digital assets and international exposure; three years of
+The data foundation includes 26 default assets across equities, ETFs, fixed
+income, commodities, digital assets and international exposure; three years of
 deterministic OHLCV; company/ETF fundamentals; a macro backdrop; and seeded news
 sentiment. Every line is generated locally and feeds the research terminal or the
 forecast model's context tilt. On Cloudflare Workers, prices and candles hydrate
 from Yahoo Finance (equities/ETFs) and Coinbase/CoinGecko/DefiLlama (crypto);
 macro hydrates from FRED plus Yahoo proxies. Fundamentals, news and the quality
-audit remain deterministic unless a licensed provider is added.
+audit remain deterministic unless a licensed provider is added. Arbitrary symbols
+loaded through search use the same pipeline and fall back to deterministic data
+if every upstream provider rejects them.
 
 Everything is computed locally in the static build. Portfolio, alerts and theme
 are stored in `localStorage`; clearing site data resets them. The Worker API is
@@ -232,8 +259,14 @@ production, add a server-side proxy so provider API keys never reach the browser
 - Generative AI requires the Cloudflare Workers deployment. The static Pages
   build deliberately has no browser-side LLM or API key. AI output can be wrong,
   may omit material information and is not personalized investment advice.
-- Forecast intervals are model-based and assume the recent return distribution
-  is informative. They cannot anticipate regime breaks, gaps or corporate events.
+- Forecast intervals and the AI insight forecast are model-based and assume the
+  recent return distribution is informative. They cannot anticipate regime
+  breaks, gaps or corporate events and are not price targets.
+- Search and arbitrary-symbol loading require the Cloudflare Worker. The static
+  Pages build offers a direct-ticker entry but explains that live loading needs
+  the Worker; its bundled 26 assets still work offline.
+- Chart annotations are stored only in this browser. They are not sent to the
+  Worker and are not investment advice.
 - The Worker API is unauthenticated and read-only; do not add private data to it
   without authentication and rate limiting.
 - Tax-lot comparison is illustrative and ignores jurisdiction-specific rules,

@@ -5,6 +5,8 @@ import { summarize } from '../core/indicators.js';
 import { CanvasChart } from './charts.js';
 
 export { UNIVERSE };
+export const CORE_UNIVERSE = [...UNIVERSE];
+export const CORE_SYMBOLS = CORE_UNIVERSE.map((asset) => asset.symbol);
 
 export const market = marketSnapshot(756);
 export const quotes = market.quotes;
@@ -54,11 +56,62 @@ function normalizeServerCandles(candles) {
  * Merge a server snapshot into the shared mutable market objects. Views listen
  * for the `ik:market-updated` event and re-render with the new prices.
  */
+export function upsertAsset(asset) {
+  if (!asset?.symbol) return null;
+  const symbol = String(asset.symbol).toUpperCase();
+  const normalized = {
+    symbol,
+    name: asset.name ?? symbol,
+    sector: asset.sector ?? 'Custom',
+    kind: asset.kind ?? 'equity',
+    exchange: asset.exchange ?? '',
+    instrumentType: asset.instrumentType ?? '',
+  };
+  const existing = assetsBySymbol[symbol];
+  if (existing) {
+    Object.assign(existing, normalized);
+    return existing;
+  }
+  assetsBySymbol[symbol] = normalized;
+  UNIVERSE.push(normalized);
+  return normalized;
+}
+
+export function hydrateSymbol(payload) {
+  const symbol = payload?.asset?.symbol ?? payload?.symbol;
+  if (!symbol || !Array.isArray(payload.candles) || !payload.candles.length) return false;
+  upsertAsset(payload.asset ?? {
+    symbol,
+    name: payload.meta?.longName ?? payload.meta?.shortName ?? symbol,
+    kind: 'equity',
+  });
+  const candles = normalizeServerCandles(payload.candles);
+  candleMap[symbol] = candles;
+  returnsBySymbol[symbol] = returnsFromCandles(candles);
+  indicators[symbol] = summarize(candles);
+  if (payload.quote) quotes[symbol] = payload.quote;
+  if (payload.fundamentals) fundamentals[symbol] = payload.fundamentals;
+  if (payload.news) news[symbol] = payload.news;
+  if (payload.quality) quality[symbol] = payload.quality;
+  if (payload.source) sources[symbol] = payload.source;
+  market.live = true;
+  market.source = market.source === 'demo' ? 'live' : market.source;
+  if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('ik:symbol-updated', { detail: { symbol, payload } }));
+    document.dispatchEvent(new CustomEvent('ik:assets-updated', { detail: { symbol } }));
+  }
+  return true;
+}
+
 export function hydrateMarket(snapshot) {
   if (!snapshot?.candleMap) return false;
-  const symbols = Object.keys(snapshot.candleMap).filter((symbol) => assetsBySymbol[symbol]);
+  if (Array.isArray(snapshot.assets)) {
+    for (const asset of snapshot.assets) upsertAsset(asset);
+  }
+  const symbols = Object.keys(snapshot.candleMap);
   if (!symbols.length) return false;
   for (const symbol of symbols) {
+    if (!assetsBySymbol[symbol]) upsertAsset({ symbol, name: snapshot.quotes?.[symbol]?.name ?? symbol });
     const candles = normalizeServerCandles(snapshot.candleMap[symbol]);
     candleMap[symbol] = candles;
     returnsBySymbol[symbol] = returnsFromCandles(candles);
@@ -78,6 +131,7 @@ export function hydrateMarket(snapshot) {
   market.live = market.source !== 'synthetic';
   market.warnings = snapshot.warnings ?? [];
   if (typeof document !== 'undefined') {
+    document.dispatchEvent(new CustomEvent('ik:assets-updated', { detail: { count: UNIVERSE.length } }));
     document.dispatchEvent(new CustomEvent('ik:market-updated', { detail: snapshot }));
   }
   return true;

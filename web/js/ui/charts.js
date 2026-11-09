@@ -18,6 +18,7 @@ export class CanvasChart {
     this.series = [];
     this.labels = [];
     this.markers = [];
+    this.annotations = [];
     this.hoverIndex = null;
     this.tooltip = document.createElement('div');
     this.tooltip.className = 'chart-tooltip';
@@ -27,20 +28,23 @@ export class CanvasChart {
     this.handleMove = this.handleMove.bind(this);
     this.handleLeave = this.handleLeave.bind(this);
     this.handleResize = this.handleResize.bind(this);
+    this.handleClick = this.handleClick.bind(this);
     canvas.addEventListener('mousemove', this.handleMove);
     canvas.addEventListener('mouseleave', this.handleLeave);
     canvas.addEventListener('touchstart', this.handleMove, { passive: true });
     canvas.addEventListener('touchmove', this.handleMove, { passive: true });
     canvas.addEventListener('touchend', this.handleLeave);
+    canvas.addEventListener('click', this.handleClick);
     this.observer = new ResizeObserver(this.handleResize);
     this.observer.observe(canvas);
     this.draw();
   }
 
-  setData({ series = [], labels = [], markers = [], yFormat, xFormat } = {}) {
+  setData({ series = [], labels = [], markers = [], annotations = [], yFormat, xFormat } = {}) {
     this.series = series;
     this.labels = labels;
     this.markers = markers;
+    this.annotations = annotations;
     if (yFormat) this.options.yFormat = yFormat;
     if (xFormat) this.options.xFormat = xFormat;
     this.draw();
@@ -54,6 +58,23 @@ export class CanvasChart {
     this.hoverIndex = null;
     this.tooltip.hidden = true;
     this.draw();
+  }
+
+  handleClick(event) {
+    if (!this.options.onClick || !this.labels.length) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const point = event.touches ? event.touches[0] : event;
+    const x = point.clientX - rect.left;
+    const { left, right } = this.options.padding;
+    const width = rect.width - left - right;
+    if (x < left || x > rect.width - right || width <= 0) return;
+    const ratio = (x - left) / width;
+    const index = Math.max(0, Math.min(this.labels.length - 1, Math.round(ratio * (this.labels.length - 1))));
+    const value = this.series
+      .filter((series) => !series.band && !series.silent && series.values)
+      .map((series) => series.values[index])
+      .find((candidate) => Number.isFinite(candidate));
+    this.options.onClick({ index, label: this.labels[index], value });
   }
 
   handleMove(event) {
@@ -300,6 +321,46 @@ export class CanvasChart {
       }
     }
 
+    // User annotations: dashed guides with compact labels.
+    const annotationRows = [];
+    for (const annotation of this.annotations) {
+      if (!Number.isFinite(annotation.index)) continue;
+      const x = scaleX(annotation.index);
+      const color = annotation.color || '#f6c85f';
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = 0.75;
+      ctx.setLineDash([2, 4]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, plotTop);
+      ctx.lineTo(x, plotBottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+      const primary = this.series.find((series) => !series.band && !series.silent && series.values && Number.isFinite(series.values[annotation.index]));
+      if (primary) {
+        ctx.beginPath();
+        ctx.arc(x, scaleY(primary.values[annotation.index]), 3, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+      const text = String(annotation.label ?? '').slice(0, 34);
+      if (!text) continue;
+      ctx.font = '10px ui-sans-serif, system-ui, sans-serif';
+      const textWidth = Math.min(ctx.measureText(text).width, plotWidth - 8);
+      let row = 0;
+      while (annotationRows.some((item) => item.row === row && Math.abs(item.x - x) < textWidth + 8)) row += 1;
+      annotationRows.push({ row, x });
+      const boxX = Math.max(plotLeft + 2, Math.min(x + 5, plotRight - textWidth - 8));
+      const boxY = plotTop + 4 + row * 15;
+      ctx.fillStyle = 'rgba(10, 18, 32, 0.82)';
+      ctx.fillRect(boxX, boxY, textWidth + 6, 13);
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, boxX + 3, boxY + 7);
+    }
+
     // Compact legend.
     if (this.options.showLegend) {
       const visible = this.series.filter((series) => !series.silent && (series.values || series.band));
@@ -350,6 +411,7 @@ export class CanvasChart {
     this.observer?.disconnect();
     this.canvas.removeEventListener('mousemove', this.handleMove);
     this.canvas.removeEventListener('mouseleave', this.handleLeave);
+    this.canvas.removeEventListener('click', this.handleClick);
     this.tooltip.remove();
   }
 }
