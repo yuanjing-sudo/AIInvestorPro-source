@@ -3,6 +3,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { marketSnapshot, dataQuality, sentimentSummary, newsFor } from '../js/core/marketdata.js';
 import { buildForecast } from '../js/core/forecast.js';
+import { indicatorDetails } from '../js/core/indicators.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const html = readFileSync(`${ROOT}/index.html`, 'utf8');
@@ -69,11 +70,32 @@ const costQuote = {
   changePercent: (costCandles.at(-1).close / costCandles.at(-2).close - 1) * 100,
   asOf: costCandles.at(-1).date,
 };
-const costNews = newsFor('COST', costCandles.at(-1).date);
+const costNews = newsFor('SPY', costCandles.at(-1).date).map((item, index) => ({
+  ...item,
+  symbol: 'COST',
+  ...(index === 0 ? { live: true, url: 'https://finance.yahoo.com/quote/COST/news', source: 'Yahoo Finance' } : {}),
+}));
+const costSec = {
+  source: 'sec', sourceLabel: 'SEC EDGAR', cik: '909832', entityName: 'Costco Wholesale Corporation',
+  asOf: costCandles.at(-1).date, fiscalYearEnd: '0830', currency: 'USD',
+  metrics: {
+    revenue: 254.5e9, revenueGrowth: 0.06, netIncome: 7.4e9, netMargin: 0.029,
+    assets: 69e9, liabilities: 43e9, equity: 26e9, cash: 11e9, operatingCashFlow: 11.3e9,
+    freeCashFlow: 6.1e9, epsDiluted: 16.6, sharesOutstanding: 444e6, bookValuePerShare: 58.5,
+    debtToEquity: 1.65, currentRatio: 1.02, grossMargin: 0.125, rdIntensity: null,
+  },
+  annual: {
+    revenue: [{ end: '2024-09-01', value: 254.5e9 }],
+    netIncome: [{ end: '2024-09-01', value: 7.4e9 }],
+    epsDiluted: [{ end: '2024-09-01', value: 16.6 }],
+  },
+  filings: [{ form: '10-K', filingDate: costCandles.at(-1).date, reportDate: '2024-09-01', description: 'Annual report', url: 'https://www.sec.gov/Archives/edgar/data/909832/example' }],
+};
 const costPayload = {
   ok: true,
   source: 'yahoo',
-  provider: 'Yahoo Finance (server-side)',
+  provider: 'Yahoo Finance + SEC EDGAR + Yahoo Finance news (server-side)',
+  dataSources: { market: 'yahoo', sec: 'sec', news: 'yahoo-news' },
   generatedAt: new Date().toISOString(),
   asset: { symbol: 'COST', name: 'Costco Wholesale Corporation', sector: 'Consumer Defensive', kind: 'equity', exchange: 'NMS', instrumentType: 'EQUITY' },
   meta: { longName: 'Costco Wholesale Corporation', currency: 'USD', exchange: 'NMS' },
@@ -88,7 +110,9 @@ const costPayload = {
     analystUpside: 0.1, analystCount: 24, expenseRatio: null, aum: null, employees: 316000,
     nextEarnings: null, fiscalYearEnd: null, asOf: costCandles.at(-1).date,
   },
+  sec: costSec,
   news: costNews,
+  newsSource: 'yahoo-news',
   sentiment: sentimentSummary(costNews),
   quality: dataQuality(costCandles, false),
   macro: { regime: 'Neutral' },
@@ -115,6 +139,9 @@ const insightsPayload = {
   trend: { label: 'Uptrend', score: 4, tone: 'good', signals: ['Price above SMA20'] },
   levels: { price: forecast.start, support20: forecast.start * 0.95, resistance20: forecast.start * 1.03, support60: forecast.start * 0.9, resistance60: forecast.start * 1.08, rangePosition: 0.55 },
   sentiment: { label: 'Positive', score: 0.24, positive: 2, negative: 0 },
+  indicatorDetails: indicatorDetails(market.candleMap.SPY),
+  sec: costSec,
+  newsSource: 'yahoo-news',
   forecast,
   analysis: {
     summary: 'Test technical scan summary', trend: 'Test trend read', sentiment: 'Test sentiment read',
@@ -212,7 +239,8 @@ assert(document.querySelector('#ai-chat').textContent.includes('Test chat reply'
 document.querySelector('#ai-scan').click();
 await wait(250);
 assert(document.querySelector('#ai-insights').textContent.includes('Test technical scan summary'), 'AI insights rendered');
-assert(document.querySelector('#ai-insights').textContent.includes('RSI 14'), 'AI insight indicators rendered');
+assert(document.querySelector('#ai-insights').textContent.includes('RSI'), 'AI insight indicators rendered');
+assert(document.querySelector('#ai-insights').textContent.includes('average gains'), 'AI indicator summaries rendered');
 assert(document.querySelector('#ai-insights').textContent.includes('Probability up'), 'AI insight forecast stats rendered');
 assert(document.querySelector('#ai-insight-chart-wrap').hidden === false, 'AI forecast chart visible');
 
@@ -233,6 +261,12 @@ assert(document.querySelector('#research-symbol').value === 'COST', 'dynamic ass
 assert(document.querySelector('#research-fund-note').textContent.includes('Costco'), 'dynamic fundamentals rendered');
 assert(document.querySelector('#research-price-canvas').width > 0, 'dynamic price chart rendered');
 assert(document.querySelector('#research-technical').textContent.includes('RSI'), 'technical indicators rendered');
+assert(document.querySelector('#research-technical').textContent.includes('ADX'), 'expanded technical indicators rendered');
+assert(document.querySelector('#research-technical-summary').textContent.includes('indicators'), 'technical summary rendered');
+assert(document.querySelector('#research-sec-note').textContent.includes('Costco'), 'SEC profile rendered');
+assert(document.querySelector('#research-sec-metrics').textContent.includes('Revenue'), 'SEC metrics rendered');
+assert(document.querySelector('#research-sec-filings').textContent.includes('10-K'), 'SEC filings rendered');
+assert(document.querySelector('#research-news-note').textContent.includes('live Yahoo Finance'), 'live news label rendered');
 
 if (errors.length) throw new Error(errors.map((error) => error?.stack ?? error).join('\n'));
 console.log('Live hydration smoke passed: health, hydrate, badge, ticker, server forecast, AI analysis/chat/insights, search and dynamic research.');

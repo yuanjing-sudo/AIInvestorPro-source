@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { handleApi } from '../src/index.js';
-import { parseSearch, searchAssets } from '../src/search.js';
+import { parseSearch, parseYahooNews, searchAssets } from '../src/search.js';
 
 function jsonResponse(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -45,6 +45,32 @@ test('searchAssets queries the public Yahoo search endpoint', async () => {
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test('parseYahooNews normalizes live headlines and sentiment', () => {
+  const items = parseYahooNews({
+    news: [
+      {
+        title: 'Apple beats expectations as revenue hits record',
+        publisher: 'Market Wire',
+        link: 'https://finance.yahoo.com/example',
+        providerPublishTime: 1_700_000_000,
+      },
+      {
+        title: 'Apple faces regulatory probe and lawsuit',
+        publisher: 'Capital Desk',
+        link: 'javascript:alert(1)',
+        providerPublishTime: 1_700_100_000,
+      },
+    ],
+  }, 'AAPL');
+  assert.equal(items.length, 2);
+  assert.equal(items[0].live, true);
+  assert.ok(items[0].sentiment > 0);
+  assert.match(items[0].category, /Earnings|News/);
+  assert.equal(items[1].url, null);
+  assert.ok(items[1].sentiment < 0);
+  assert.equal(items[1].symbol, 'AAPL');
 });
 
 test('search route is exposed and returns normalized assets', async () => {

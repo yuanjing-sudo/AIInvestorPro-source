@@ -78,7 +78,7 @@ dependency-free, installable PWA in [`web/`](web/README.md).
 cd web
 node server.mjs          # http://localhost:8080/
 npm install              # only for the JSDOM smoke test
-npm test                 # 100 numerical/unit tests
+npm test                 # 104 numerical/unit tests
 npm run test:ui          # drives every tab in a DOM
 npm run test:live        # simulates the Worker API and verifies hydration
 npm run test:all
@@ -94,10 +94,12 @@ same PWA and exposes `/api/market`, `/api/quote/:symbol`, `/api/forecast/:symbol
 `/api/macro`, `/api/sources`, `/api/search?q=` and generative AI endpoints
 (`/api/ai/status`, `/api/ai/chat`, `/api/ai/analysis/:symbol`,
 `/api/ai/insights/:symbol`). In that mode the browser hydrates a multi-source live feed
-(Yahoo Finance for equities/ETFs, Coinbase/CoinGecko/DefiLlama for crypto and FRED for
-macro), searches any Yahoo-listed ticker, requests forecasts from the server and adds an
-**AI Analyst** tab with grounded research briefs, chat and a technical/sentiment scan.
-The Research terminal adds a price chart with SMA20/SMA50 and saved click annotations.
+(Yahoo Finance for equities/ETFs and news, Coinbase/CoinGecko/DefiLlama for crypto, FRED
+for macro and SEC EDGAR for reported US company facts), searches any Yahoo-listed ticker,
+requests forecasts from the server and adds an **AI Analyst** tab with grounded research
+briefs, chat and a technical/sentiment scan. The Research terminal adds a price chart
+with SMA20/SMA50, saved click annotations, 23 explained indicators and an SEC
+fundamentals/filings panel.
 If the API is unavailable it silently falls back to the deterministic local feed; the
 static build stays offline-first and does not pretend to have an LLM. See
 [`worker/README.md`](worker/README.md).
@@ -135,11 +137,13 @@ The default model is `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (Llama 3.3 70B),
 automatic fallback to Llama 3.1 8B and Qwen 3 30B if the primary model is unavailable.
 
 * `POST /api/ai/analysis/:symbol` builds a grounded context from the Worker's live quote,
-  performance, volatility, fundamentals, macro, sentiment, news and data-quality data,
-  then asks the model for a structured JSON research brief.
-* `POST /api/ai/insights/:symbol` computes 12 deterministic technical indicators, key
-  support/resistance levels, sentiment and a 21-day Monte Carlo forecast, then asks the
-  model to interpret the trend, signals, risks and forecast uncertainty.
+  performance, volatility, synthetic fundamentals, SEC reported facts, macro, sentiment,
+  live or synthetic headlines and data-quality data, then asks the model for a structured
+  JSON research brief.
+* `POST /api/ai/insights/:symbol` computes 23 deterministic technical indicators with
+  plain-English summaries, key support/resistance levels, sentiment, SEC facts and a
+  21-day Monte Carlo forecast, then asks the model to interpret the trend, signals, risks
+  and forecast uncertainty.
 * `POST /api/ai/chat` answers questions about the selected asset using the same context.
   The client sends only the conversation and a symbol; the model call stays server-side.
 * `GET /api/ai/status` reports whether the binding is configured and which models are
@@ -154,8 +158,8 @@ verify data independently.
 Features: dashboard, price/chart indicators, 9-strategy backtester, constrained portfolio
 optimizer with efficient frontier, correlated Monte Carlo risk lab, screener, portfolio
 ledger with FIFO/LIFO/HIFO/LOFO tax-lot comparison, price/RSI/volume alerts, a research
-terminal (multi-horizon scorecard, relative strength, fundamentals, macro, correlation,
-sentiment and data-quality audit) and a forecast studio (drift/Holt/ridge ensemble,
+terminal (multi-horizon scorecard, relative strength, synthetic fundamentals, SEC facts
+and filings, macro, correlation, live or synthetic news sentiment and data-quality audit) and a forecast studio (drift/Holt/ridge ensemble,
 50/80/95% simulation cones, scenario matrix, walk-forward diagnostics and feature
 attribution). A command palette, market ribbon, responsive sidebar and mobile navigation
 make the same build usable on phones, tablets and desktops. On Cloudflare Workers the

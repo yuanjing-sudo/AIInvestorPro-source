@@ -2,23 +2,41 @@
 // correlation, sentiment and data-quality coverage for one asset.
 
 import {
-  quotes, candleMap, fundamentals, news, quality, sources, macro, market,
+  quotes, candleMap, fundamentals, news, quality, sources, macro, market, secBySymbol,
   assetsBySymbol, returnsBySymbol, indicators, state, $, escapeHtml, dateShort, sourceLabel,
   formatMoney, formatMoneyCompact, formatPercent, formatSignedPercent,
   formatNumber, formatCompact, signClass, makeChart, statCard, toast, fillSymbolSelect,
+  hydrateSymbol,
 } from './shared.js';
+import { live, fetchSymbol } from '../core/live.js';
 import { analyzeReturns, drawdownSeries } from '../core/analytics.js';
 import { correlationMatrix, beta } from '../core/risk.js';
 import {
   performanceWindows, historicalVolatility, pricePercentile, sentimentSummary,
   drawdownSeriesFromCandles,
 } from '../core/marketdata.js';
-import { sma } from '../core/indicators.js';
+import { sma, indicatorDetails } from '../core/indicators.js';
 
 let relativeChart = null;
 let drawdownChart = null;
 let priceChart = null;
 let annotateMode = false;
+
+const deepLoaded = new Set();
+const deepLoading = new Set();
+
+async function ensureDeep(symbol) {
+  if (!live.enabled || deepLoaded.has(symbol) || deepLoading.has(symbol)) return;
+  deepLoading.add(symbol);
+  try {
+    const payload = await fetchSymbol(symbol, { deep: true, range: '2y' });
+    if (hydrateSymbol(payload)) deepLoaded.add(symbol);
+  } catch {
+    // The snapshot still provides prices and technicals if deep data is unavailable.
+  } finally {
+    deepLoading.delete(symbol);
+  }
+}
 
 const ANNOTATIONS_KEY = 'ik.annotations.v1';
 const ANNOTATION_COLORS = ['#f6c85f', '#2ee6c5', '#7dd3fc', '#f0abfc', '#fda4af', '#a3e635'];
@@ -121,49 +139,35 @@ function renderPriceChart(symbol, candles, quote, vol) {
   renderAnnotationList(symbol, labels);
 }
 
-function technicalRows(symbol, quote, vol) {
-  const row = indicators[symbol] ?? {};
-  const price = quote?.price ?? 0;
-  const bollinger = row.bollinger ?? {};
-  const bollingerRange = Number.isFinite(bollinger.upper) && Number.isFinite(bollinger.lower)
-    ? bollinger.upper - bollinger.lower
-    : 0;
-  const bollingerPosition = bollingerRange > 0 ? (price - bollinger.lower) / bollingerRange : null;
-  const macdHistogram = (row.macd ?? 0) - (row.macdSignal ?? 0);
-  const volumeRatio = row.meanVolume > 0 ? (candleMap[symbol]?.at(-1)?.volume ?? 0) / row.meanVolume : null;
-  return [
-    { label: 'RSI · 14', value: formatNumber(row.rsi, 1), note: row.rsi > 70 ? 'Overbought' : row.rsi < 30 ? 'Oversold' : 'Neutral', tone: row.rsi > 70 ? 'warn' : row.rsi < 30 ? 'bad' : '' },
-    { label: 'MACD hist.', value: formatNumber(macdHistogram, 3), note: macdHistogram >= 0 ? 'Bullish' : 'Bearish', tone: macdHistogram >= 0 ? 'good' : 'bad' },
-    { label: 'ATR · 14', value: formatMoney(row.atr, 2), note: `${formatPercent(price ? row.atr / price : null, 2)} of price`, tone: '' },
-    { label: 'Bollinger pos.', value: bollingerPosition === null ? '—' : `${(bollingerPosition * 100).toFixed(0)}%`, note: bollingerPosition > 0.9 ? 'Upper band' : bollingerPosition < 0.1 ? 'Lower band' : 'Inside bands', tone: bollingerPosition > 0.9 ? 'warn' : bollingerPosition < 0.1 ? 'bad' : '' },
-    { label: 'Stochastic', value: formatNumber(row.stochastic, 1), note: row.stochastic > 80 ? 'Overbought' : row.stochastic < 20 ? 'Oversold' : 'Neutral', tone: row.stochastic > 80 ? 'warn' : row.stochastic < 20 ? 'bad' : '' },
-    { label: 'Williams %R', value: formatNumber(row.williams, 1), note: row.williams > -20 ? 'Overbought' : row.williams < -80 ? 'Oversold' : 'Neutral', tone: row.williams > -20 ? 'warn' : row.williams < -80 ? 'bad' : '' },
-    { label: 'ROC · 10', value: formatPercent(row.roc, 2), note: row.roc >= 0 ? 'Positive momentum' : 'Negative momentum', tone: row.roc >= 0 ? 'good' : 'bad' },
-    { label: 'VWAP · 20', value: formatMoney(row.vwap, 2), note: price >= row.vwap ? 'Price above VWAP' : 'Price below VWAP', tone: price >= row.vwap ? 'good' : 'bad' },
-    { label: 'OBV', value: formatCompact(row.obv), note: 'On-balance volume', tone: '' },
-    { label: 'Aroon Up · 25', value: formatNumber(row.aroon, 1), note: row.aroon > 70 ? 'Strong trend' : row.aroon < 30 ? 'Weak trend' : 'Transition', tone: row.aroon > 70 ? 'good' : row.aroon < 30 ? 'bad' : '' },
-    { label: 'Volume ratio', value: volumeRatio === null ? '—' : `${volumeRatio.toFixed(2)}×`, note: volumeRatio > 1.4 ? 'Volume expansion' : volumeRatio < 0.7 ? 'Volume contraction' : 'Normal', tone: volumeRatio > 1.4 ? 'good' : '' },
-    { label: 'Realized vol.', value: formatPercent(vol, 1), note: '21 trading days', tone: vol > 0.35 ? 'warn' : '' },
-  ];
+function technicalRows(symbol) {
+  return indicatorDetails(candleMap[symbol] ?? []);
 }
 
-function renderTechnical(symbol, quote, vol) {
+function renderTechnical(symbol, quote) {
   const target = $('#research-technical');
   if (!target) return;
-  const rows = technicalRows(symbol, quote, vol);
-  target.innerHTML = rows.map((row) => `<div class="indicator-cell">
+  const rows = technicalRows(symbol);
+  target.innerHTML = rows.map((row) => `<div class="indicator-cell" title="${escapeHtml(row.summary)}">
     <span>${escapeHtml(row.label)}</span>
-    <strong class="${row.tone}">${row.value}</strong>
-    <small>${escapeHtml(row.note)}</small>
+    <strong class="${row.tone}">${escapeHtml(row.display)}</strong>
+    <small>${escapeHtml(row.signal)}</small>
+    <p class="indicator-summary">${escapeHtml(row.summary)}</p>
+    <p class="indicator-reading">${escapeHtml(row.reading)}</p>
   </div>`).join('');
+  const bullish = rows.filter((row) => row.tone === 'good').length;
+  const bearish = rows.filter((row) => row.tone === 'bad').length;
+  const summary = $('#research-technical-summary');
+  if (summary) {
+    summary.textContent = `${rows.length} indicators · ${bullish} constructive · ${bearish} cautionary · ${rows.length - bullish - bearish} neutral`;
+  }
   const trend = $('#research-trend-pill');
   if (trend) {
     const close = quote?.price ?? 0;
     const row = indicators[symbol] ?? {};
-    const bullish = close > row.sma20 && row.sma20 > row.sma50;
-    const bearish = close < row.sma20 && row.sma20 < row.sma50;
-    trend.textContent = bullish ? 'Uptrend' : bearish ? 'Downtrend' : 'Sideways';
-    trend.className = `pill ${bullish ? 'good' : bearish ? 'bad' : 'warn'}`;
+    const bullishTrend = close > row.sma20 && row.sma20 > row.sma50;
+    const bearishTrend = close < row.sma20 && row.sma20 < row.sma50;
+    trend.textContent = bullishTrend ? 'Uptrend' : bearishTrend ? 'Downtrend' : 'Sideways';
+    trend.className = `pill ${bullishTrend ? 'good' : bearishTrend ? 'bad' : 'warn'}`;
   }
 }
 
@@ -176,6 +180,7 @@ export function initResearch() {
   select.addEventListener('change', () => {
     state.research.symbol = select.value;
     renderResearch();
+    ensureDeep(state.research.symbol);
   });
   $('#research-export')?.addEventListener('click', exportSnapshot);
   $('#research-annotate')?.addEventListener('click', () => {
@@ -205,8 +210,12 @@ export function initResearch() {
   document.addEventListener('ik:symbol-updated', (event) => {
     if (event.detail?.symbol === state.research.symbol) renderResearch();
   });
-  document.addEventListener('ik:assets-updated', () => fillSymbolSelect(select, state.research.symbol));
+  document.addEventListener('ik:assets-updated', () => {
+    fillSymbolSelect(select, state.research.symbol);
+    ensureDeep(state.research.symbol);
+  });
   renderResearch();
+  ensureDeep(state.research.symbol);
 }
 
 function exportSnapshot() {
@@ -223,7 +232,10 @@ function exportSnapshot() {
     },
     quote: quotes[symbol],
     fundamentals: fundamentals[symbol],
+    sec: secBySymbol[symbol] ?? null,
     news: news[symbol],
+    newsSource: (news[symbol] ?? []).some((item) => item.live) ? 'yahoo-news' : 'synthetic',
+    indicators: indicatorDetails(candleMap[symbol] ?? []),
     performance: performanceWindows(candleMap[symbol]),
     macro,
     quality: quality[symbol],
@@ -332,7 +344,9 @@ export function renderResearch() {
   renderMacro();
   renderCorrelation(symbol);
   renderNews(symbol, items, sentiment);
+  renderSec(symbol);
   renderQuality(qualityRow, percentile, vol);
+  ensureDeep(symbol);
 }
 
 function renderHorizons(perf) {
@@ -351,7 +365,8 @@ function renderHorizons(perf) {
   }).join('');
 }
 
-function renderFundamentals(symbol, basics, quote) {  const asset = assetsBySymbol[symbol];
+function renderFundamentals(symbol, basics, quote) {
+  const asset = assetsBySymbol[symbol];
   const value = (input, formatter = formatNumber) => (
     input === null || input === undefined || !Number.isFinite(input) ? '—' : formatter(input)
   );
@@ -388,14 +403,105 @@ function renderFundamentals(symbol, basics, quote) {  const asset = assetsBySymb
     </tr>`);
   }
   $('#research-fundamentals tbody').innerHTML = rows.join('');
-  $('#research-fund-note').textContent = `${asset.name} · ${asset.sector} · ${basics.kind.toUpperCase()} · synthetic fundamentals`;
+  const sec = secBySymbol[symbol];
+  $('#research-fund-note').textContent = `${asset.name} · ${asset.sector} · ${basics.kind.toUpperCase()} · synthetic fundamentals${sec ? ' · reported SEC facts below' : ''}`;
   $('#research-rating').textContent = `${basics.analystRating} · ${basics.analystCount} analysts`;
   $('#research-rating').className = `pill ${basics.analystUpside > 0 ? 'good' : 'bad'}`;
 }
 
+function renderSec(symbol) {
+  const target = $('#research-sec-metrics tbody');
+  if (!target) return;
+  const sec = secBySymbol[symbol];
+  const note = $('#research-sec-note');
+  const pill = $('#research-sec-pill');
+  const filingsTarget = $('#research-sec-filings');
+  const annualTarget = $('#research-sec-annual tbody');
+  if (!sec) {
+    target.innerHTML = '<tr><td colspan="4" class="muted">No SEC facts loaded for this asset.</td></tr>';
+    if (annualTarget) annualTarget.innerHTML = '';
+    if (filingsTarget) filingsTarget.innerHTML = '';
+    if (pill) {
+      pill.textContent = deepLoading.has(symbol) ? 'Loading…' : live.enabled ? 'Not available' : 'Worker required';
+      pill.className = 'pill warn';
+    }
+    if (note) {
+      note.textContent = !live.enabled
+        ? 'SEC EDGAR facts require the Cloudflare Worker deployment.'
+        : deepLoading.has(symbol)
+          ? 'Loading reported SEC company facts and recent filings…'
+          : 'SEC EDGAR covers US-registered issuers. Indices, FX, futures, crypto and many non-US listings are out of scope.';
+    }
+    return;
+  }
+  const metrics = sec.metrics ?? {};
+  const money = (value) => (Number.isFinite(value) ? `$${formatCompact(value)}` : '—');
+  const pct = (value) => (Number.isFinite(value) ? formatPercent(value, 1) : '—');
+  const num = (value, digits = 2) => (Number.isFinite(value) ? formatNumber(value, digits) : '—');
+  const pairs = [
+    ['Revenue', money(metrics.revenue)],
+    ['Revenue growth', pct(metrics.revenueGrowth)],
+    ['Net income', money(metrics.netIncome)],
+    ['Net margin', pct(metrics.netMargin)],
+    ['Operating cash flow', money(metrics.operatingCashFlow)],
+    ['Free cash flow', money(metrics.freeCashFlow)],
+    ['Total assets', money(metrics.assets)],
+    ['Total liabilities', money(metrics.liabilities)],
+    ['Shareholders equity', money(metrics.equity)],
+    ['Cash & equivalents', money(metrics.cash)],
+    ['EPS diluted', Number.isFinite(metrics.epsDiluted) ? formatMoney(metrics.epsDiluted, 2) : '—'],
+    ['Book value / share', Number.isFinite(metrics.bookValuePerShare) ? formatMoney(metrics.bookValuePerShare, 2) : '—'],
+    ['Debt / equity', Number.isFinite(metrics.debtToEquity) ? `${metrics.debtToEquity.toFixed(2)}×` : '—'],
+    ['Current ratio', num(metrics.currentRatio)],
+    ['Gross margin', pct(metrics.grossMargin)],
+    ['R&D intensity', pct(metrics.rdIntensity)],
+  ];
+  const rows = [];
+  for (let index = 0; index < pairs.length; index += 2) {
+    const left = pairs[index];
+    const right = pairs[index + 1] ?? ['', ''];
+    rows.push(`<tr><td class="muted">${left[0]}</td><td class="num">${left[1]}</td><td class="muted">${right[0]}</td><td class="num">${right[1]}</td></tr>`);
+  }
+  target.innerHTML = rows.join('');
+
+  if (annualTarget) {
+    const dates = [...new Set([
+      ...(sec.annual?.revenue ?? []).map((row) => row.end),
+      ...(sec.annual?.netIncome ?? []).map((row) => row.end),
+      ...(sec.annual?.epsDiluted ?? []).map((row) => row.end),
+    ])].filter(Boolean).sort().slice(-5);
+    const byDate = (series) => Object.fromEntries((series ?? []).map((row) => [row.end, row.value]));
+    const revenue = byDate(sec.annual?.revenue);
+    const netIncome = byDate(sec.annual?.netIncome);
+    const eps = byDate(sec.annual?.epsDiluted);
+    annualTarget.innerHTML = dates.length ? dates.map((date) => `<tr>
+      <td>${escapeHtml(dateShort(date))}</td>
+      <td class="num">${money(revenue[date])}</td>
+      <td class="num">${money(netIncome[date])}</td>
+      <td class="num">${Number.isFinite(eps[date]) ? formatMoney(eps[date], 2) : '—'}</td>
+    </tr>`).join('') : '<tr><td colspan="4" class="muted">Annual series not reported for this issuer.</td></tr>';
+  }
+
+  if (filingsTarget) {
+    filingsTarget.innerHTML = (sec.filings ?? []).slice(0, 8).map((filing) => {
+      const label = `${filing.form} · ${filing.filingDate ?? '—'}`;
+      const body = filing.url
+        ? `<a href="${escapeHtml(filing.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
+        : escapeHtml(label);
+      return `<div class="filing-row"><span>${body}</span><small>${escapeHtml(filing.description || filing.reportDate || '')}</small></div>`;
+    }).join('') || '<span class="muted small">No recent filings returned.</span>';
+  }
+
+  if (note) note.textContent = `${sec.entityName ?? symbol} · CIK ${sec.cik} · filed ${dateShort(sec.asOf)} · reported facts, not forecasts`;
+  if (pill) {
+    pill.textContent = metrics.revenue || metrics.assets ? 'SEC reported' : 'Filings only';
+    pill.className = 'pill good';
+  }
+}
+
 function renderPriceAndTechnical(symbol, candles, quote, vol) {
   renderPriceChart(symbol, candles, quote, vol);
-  renderTechnical(symbol, quote, vol);
+  renderTechnical(symbol, quote);
 }
 
 function renderMacro() {
@@ -449,15 +555,19 @@ function renderNews(symbol, items, sentiment) {
   const badge = $('#research-sentiment');
   badge.textContent = `${sentiment.label} ${sentiment.score >= 0 ? '+' : ''}${sentiment.score.toFixed(2)}`;
   badge.className = `pill ${sentiment.score > 0.2 ? 'good' : sentiment.score < -0.2 ? 'bad' : ''}`;
-  $('#research-news-note').textContent = `${items.length} local headlines · ${sentiment.positive} positive / ${sentiment.negative} negative`;
+  const liveNews = items.some((item) => item.live);
+  $('#research-news-note').textContent = `${items.length} ${liveNews ? 'live Yahoo Finance' : 'synthetic local'} headlines · ${sentiment.positive} positive / ${sentiment.negative} negative`;
   $('#research-news').innerHTML = items.map((item) => {
     const color = item.sentiment > 0.15 ? 'var(--good)' : item.sentiment < -0.15 ? 'var(--danger)' : 'var(--faint)';
+    const headline = item.url
+      ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.headline)}</a>`
+      : escapeHtml(item.headline);
     return `<div class="news-item">
       <header>
-        <span class="news-meta">${escapeHtml(item.category)} · ${escapeHtml(item.source)}</span>
+        <span class="news-meta">${escapeHtml(item.category)} · ${escapeHtml(item.source)}${item.live ? ' · live' : ''}</span>
         <span class="news-meta">${dateShort(item.date)}</span>
       </header>
-      <div class="news-headline"><span class="sentiment-dot" style="display:inline-block;background:${color};margin-right:6px"></span>${escapeHtml(item.headline)}</div>
+      <div class="news-headline"><span class="sentiment-dot" style="display:inline-block;background:${color};margin-right:6px"></span>${headline}</div>
       <div class="news-meta">Sentiment ${item.sentiment >= 0 ? '+' : ''}${item.sentiment.toFixed(2)} · impact ${escapeHtml(item.impact)} · ${symbol}</div>
     </div>`;
   }).join('');
@@ -478,5 +588,7 @@ function renderQuality(row, percentile, vol) {
     cell('Price percentile', `${Math.round(percentile * 100)}%`),
     cell('Realized vol', formatPercent(vol, 1)),
     cell('Source', row.synthetic ? 'Synthetic · local' : sourceLabel(sources[state.research.symbol] ?? 'server')),
+    cell('SEC facts', secBySymbol[state.research.symbol] ? 'Reported' : 'Not available'),
+    cell('Headlines', (news[state.research.symbol] ?? []).some((item) => item.live) ? 'Live' : 'Synthetic'),
   ].join('');
 }

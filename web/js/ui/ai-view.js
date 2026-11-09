@@ -4,7 +4,7 @@
 
 import {
   state, $, escapeHtml, formatPercent, formatNumber, formatMoney, formatSignedPercent,
-  dateShort, toast, sourceLabel, fillSymbolSelect, makeChart, signClass,
+  formatCompact, dateShort, toast, sourceLabel, fillSymbolSelect, makeChart, signClass,
 } from './shared.js';
 import { live, aiAnalysis, aiChat, aiInsights, aiStatus } from '../core/live.js';
 
@@ -149,6 +149,16 @@ function indicatorCell(label, value, note = '', tone = '') {
   return `<div class="ai-insight-cell"><span>${escapeHtml(label)}</span><strong class="${tone}">${value}</strong>${note ? `<small>${escapeHtml(note)}</small>` : ''}</div>`;
 }
 
+function indicatorDetailCell(item) {
+  return `<div class="ai-insight-cell" title="${escapeHtml(item.summary ?? '')}">
+    <span>${escapeHtml(item.label)}</span>
+    <strong class="${item.tone ?? ''}">${escapeHtml(item.display ?? '—')}</strong>
+    <small>${escapeHtml(item.signal ?? '')}</small>
+    <p class="indicator-summary">${escapeHtml(item.summary ?? '')}</p>
+    <p class="indicator-reading">${escapeHtml(item.reading ?? '')}</p>
+  </div>`;
+}
+
 function renderInsightChart(forecast) {
   const wrap = $('#ai-insight-chart-wrap');
   if (!wrap) return;
@@ -168,11 +178,11 @@ function renderInsightChart(forecast) {
       showLegend: true,
     });
   }
-  const bands = (forecast.bands ?? []).slice(0, 2).map((band, index) => ({
+  const bands = (forecast.bands ?? []).map((band, index) => ({
     name: `${band.level}% interval`,
     band: [band.lower, band.upper],
-    color: index === 0 ? '#2ee6c5' : '#7dd3fc',
-    opacity: index === 0 ? 0.10 : 0.16,
+    color: index === 0 ? '#2ee6c5' : index === 1 ? '#7dd3fc' : '#f6c85f',
+    opacity: index === 0 ? 0.08 : index === 1 ? 0.10 : 0.12,
   }));
   insightChart.setData({
     labels,
@@ -190,12 +200,12 @@ function renderInsights() {
   const target = $('#ai-insights');
   if (!target) return;
   if (!live.enabled) {
-    target.innerHTML = '<div class="ai-empty"><strong>Technical scan and simulation need the Worker.</strong><p>The static build keeps the local deterministic indicators in Research. Open the Cloudflare Worker for the AI interpretation and forecast.</p></div>';
+    target.innerHTML = '<div class="ai-empty"><strong>Technical scan, SEC facts and simulation need the Worker.</strong><p>The static build keeps the local deterministic indicators and summaries in Research. Open the Cloudflare Worker for SEC filings, live headlines, AI interpretation and the probabilistic forecast.</p></div>';
     $('#ai-insight-chart-wrap')?.setAttribute('hidden', '');
     return;
   }
   if (aiState.insightsBusy && !aiState.insights) {
-    target.innerHTML = '<div class="ai-empty"><strong>Scanning technicals and running the simulation…</strong><p>Computing 10+ indicators, key levels, sentiment and a probabilistic path, then asking the model to interpret them.</p></div>';
+    target.innerHTML = '<div class="ai-empty"><strong>Scanning technicals and running the simulation…</strong><p>Computing 23 indicators with summaries, key levels, SEC facts, sentiment and a probabilistic path, then asking the model to interpret them.</p></div>';
     return;
   }
   if (!aiState.insights) {
@@ -211,7 +221,7 @@ function renderInsights() {
   const analysis = payload.analysis ?? {};
   const tone = trend.tone ?? (trend.label === 'Uptrend' ? 'good' : trend.label === 'Downtrend' ? 'bad' : 'warn');
   const sentiment = payload.sentiment ?? { label: 'Neutral', score: 0 };
-  const cells = [
+  const fallbackCells = [
     indicatorCell('RSI 14', formatNumber(indicators.rsi14, 1), indicators.rsi14 > 70 ? 'Overbought' : indicators.rsi14 < 30 ? 'Oversold' : 'Neutral', indicators.rsi14 > 70 ? 'warn' : indicators.rsi14 < 30 ? 'bad' : ''),
     indicatorCell('MACD hist.', formatNumber(indicators.macdHistogram, 3), indicators.macdHistogram >= 0 ? 'Bullish' : 'Bearish', indicators.macdHistogram >= 0 ? 'good' : 'bad'),
     indicatorCell('ATR 14', formatMoney(indicators.atr14, 2), indicators.atrPercent ? `${indicators.atrPercent} of price` : '', ''),
@@ -225,12 +235,21 @@ function renderInsights() {
     indicatorCell('Volume ratio', indicators.volumeRatio === null ? '—' : `${indicators.volumeRatio.toFixed(2)}×`, 'vs 20d average', indicators.volumeRatio > 1.4 ? 'good' : ''),
     indicatorCell('Realized vol.', percentText(indicators.realizedVolatility21dPercent, 1), '21 trading days', parseFloat(indicators.realizedVolatility21dPercent) > 35 ? 'warn' : ''),
   ].join('');
+  const cells = Array.isArray(payload.indicatorDetails) && payload.indicatorDetails.length
+    ? payload.indicatorDetails.map(indicatorDetailCell).join('')
+    : fallbackCells;
+  const sec = payload.sec;
+  const secSection = sec ? section('SEC reported facts', [
+    sec.entityName ? `${sec.entityName} · CIK ${sec.cik}` : `CIK ${sec.cik}`,
+    `Revenue ${formatCompact(sec.metrics?.revenue ?? NaN)} · net income ${formatCompact(sec.metrics?.netIncome ?? NaN)} · free cash flow ${formatCompact(sec.metrics?.freeCashFlow ?? NaN)}`,
+    `SEC facts are reported data, not a forecast. Latest filing ${dateShort(sec.asOf)}.`,
+  ].join(' ')) : '';
   target.innerHTML = `
     <div class="ai-insight-head">
       <span class="pill ${tone}">${escapeHtml(trend.label)} · ${formatNumber(trend.score, 0)}</span>
       <span class="pill ${sentiment.score > 0.2 ? 'good' : sentiment.score < -0.2 ? 'bad' : ''}">Sentiment ${escapeHtml(sentiment.label)} ${sentiment.score >= 0 ? '+' : ''}${Number(sentiment.score ?? 0).toFixed(2)}</span>
       <span class="muted">Support ${formatMoney(levels.support20, 2)} · Resistance ${formatMoney(levels.resistance20, 2)}</span>
-      <span class="muted">${escapeHtml(sourceLabel(payload.source ?? 'server'))} · ${escapeHtml(shortModel(payload.model))}</span>
+      <span class="muted">${escapeHtml(sourceLabel(payload.source ?? 'server'))}${payload.sec ? ' · SEC facts' : ''}${payload.newsSource === 'yahoo-news' ? ' · live headlines' : ''} · ${escapeHtml(shortModel(payload.model))}</span>
     </div>
     <div class="ai-insight-grid">${cells}</div>
     ${forecast ? `<div class="ai-insight-grid">
@@ -245,6 +264,7 @@ function renderInsights() {
       ${section('Trend read', analysis.trend)}
       ${section('Sentiment read', analysis.sentiment)}
     </div>
+    ${secSection}
     <div class="ai-insight-columns">
       ${list('Signals', analysis.signals)}
       ${list('Risks', analysis.risks)}

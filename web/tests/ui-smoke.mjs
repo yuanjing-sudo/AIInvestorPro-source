@@ -90,7 +90,10 @@ assert(document.querySelectorAll('#research-fundamentals tbody tr').length >= 8,
 assert(document.querySelectorAll('#research-macro .macro-cell').length >= 8, 'macro cells');
 assert(document.querySelectorAll('#research-horizons .horizon-cell').length === 8, 'multi-horizon scorecard');
 assert(document.querySelector('#research-price-canvas').width > 0, 'research price chart sized');
-assert(document.querySelectorAll('#research-technical .indicator-cell').length >= 12, 'technical indicators rendered');
+assert(document.querySelectorAll('#research-technical .indicator-cell').length >= 20, 'technical indicators rendered');
+assert(document.querySelectorAll('#research-technical .indicator-summary').length >= 20, 'indicator summaries rendered');
+assert(document.querySelector('#research-technical-summary').textContent.includes('indicators'), 'technical summary rendered');
+assert(document.querySelector('#research-sec-metrics') !== null, 'SEC fundamentals card rendered');
 assert(document.querySelector('#research-annotations').textContent.includes('No notes yet'), 'annotation empty state');
 click('#research-annotate');
 assert(document.querySelector('#research-annotate').getAttribute('aria-pressed') === 'true', 'annotation mode toggles');

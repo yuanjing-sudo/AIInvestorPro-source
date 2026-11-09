@@ -572,6 +572,25 @@ button.signal-card:hover { border-color: color-mix(in srgb, var(--accent) 50%, v
 .indicator-cell span { display: block; color: var(--faint); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em; }
 .indicator-cell strong { display: block; font-family: var(--mono); font-size: 0.9rem; margin-top: 3px; font-weight: 650; }
 .indicator-cell small { display: block; color: var(--faint); font-size: 0.64rem; margin-top: 2px; }
+.indicator-summary, .indicator-reading {
+  margin: 6px 0 0; color: var(--muted); font-size: 0.66rem; line-height: 1.42;
+}
+.indicator-reading { color: var(--text); font-family: var(--mono); font-size: 0.64rem; }
+.indicator-cell:hover { border-color: var(--border-strong); }
+
+.sec-detail-grid { margin-top: 12px; }
+.mini-title {
+  margin: 0 0 7px; color: var(--faint); font-size: 0.68rem; font-weight: 800;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.filing-row {
+  display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 9px;
+  background: var(--panel-2); font-size: 0.76rem;
+}
+.filing-row small { color: var(--faint); font-size: 0.64rem; text-align: right; }
+.filing-row a, .news-headline a { color: var(--accent); text-decoration: none; }
+.filing-row a:hover, .news-headline a:hover { text-decoration: underline; }
 
 .macro-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
 .macro-cell {
