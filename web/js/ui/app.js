@@ -25,7 +25,7 @@ const TABS = [
 
 const PAGE_META = {
   dashboard: { label: 'Dashboard', hint: 'Portfolio overview and market board' },
-  research: { label: 'Research terminal', hint: 'Fundamentals, macro, correlation, sentiment' },
+  research: { label: 'Research terminal', hint: 'Fundamentals, macro, multi-asset comparison, sentiment' },
   forecast: { label: 'Forecast studio', hint: 'Ensemble model with confidence intervals' },
   ai: { label: 'AI Analyst', hint: 'Generative research briefs and chat' },
   backtest: { label: 'Backtest', hint: 'Strategy research with costs and slippage' },

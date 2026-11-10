@@ -158,12 +158,15 @@ verify data independently.
 Features: dashboard, price/chart indicators, 9-strategy backtester, constrained portfolio
 optimizer with efficient frontier, correlated Monte Carlo risk lab, screener, portfolio
 ledger with FIFO/LIFO/HIFO/LOFO tax-lot comparison, price/RSI/volume alerts, a research
-terminal (multi-horizon scorecard, relative strength, synthetic fundamentals, SEC facts
-and filings, macro, correlation, live or synthetic news sentiment and data-quality audit) and a forecast studio (drift/Holt/ridge ensemble,
+terminal (multi-horizon scorecard, multi-asset normalized comparison, relative strength,
+synthetic fundamentals, SEC facts and filings, macro, selected-asset correlation, live or
+synthetic news sentiment and data-quality audit) and a forecast studio (drift/Holt/ridge ensemble,
 50/80/95% simulation cones, scenario matrix, walk-forward diagnostics and feature
-attribution). A command palette, market ribbon, responsive sidebar and mobile navigation
-make the same build usable on phones, tablets and desktops. On Cloudflare Workers the
-same UI gains live data and server-side forecasts, with an explicit source badge.
+attribution). Searched assets are added to the in-memory universe and appear in the
+Research comparison, Screener, Optimize and Risk pickers without a reload. A command
+palette, market ribbon, responsive sidebar and mobile navigation make the same build
+usable on phones, tablets and desktops. On Cloudflare Workers the same UI gains live data
+and server-side forecasts, with an explicit source badge.
 
 ### Layout
 

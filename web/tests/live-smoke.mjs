@@ -263,6 +263,9 @@ assert(document.querySelector('#research-price-canvas').width > 0, 'dynamic pric
 assert(document.querySelector('#research-technical').textContent.includes('RSI'), 'technical indicators rendered');
 assert(document.querySelector('#research-technical').textContent.includes('ADX'), 'expanded technical indicators rendered');
 assert(document.querySelector('#research-technical-summary').textContent.includes('indicators'), 'technical summary rendered');
+assert(document.querySelectorAll('#research-compare-picker input').length === 27, 'dynamic comparison picker rendered');
+assert(document.querySelector('#research-compare-table').textContent.includes('COST'), 'dynamic asset in comparison table');
+assert(document.querySelector('#research-compare-canvas').width > 0, 'comparison chart rendered');
 assert(document.querySelector('#research-sec-note').textContent.includes('Costco'), 'SEC profile rendered');
 assert(document.querySelector('#research-sec-metrics').textContent.includes('Revenue'), 'SEC metrics rendered');
 assert(document.querySelector('#research-sec-filings').textContent.includes('10-K'), 'SEC filings rendered');

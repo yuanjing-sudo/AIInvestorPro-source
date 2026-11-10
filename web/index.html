@@ -201,7 +201,7 @@
         <div>
           <p class="eyebrow">Asset intelligence</p>
           <h1>Research terminal</h1>
-          <p class="lede">One view for price action, multi-horizon performance, relative strength, fundamentals, macro context, correlation and sentiment — every line computed locally.</p>
+          <p class="lede">One view for price action, multi-horizon performance, multi-asset comparison, relative strength, fundamentals, macro context, correlation and sentiment — every line computed locally.</p>
         </div>
         <div class="section-actions">
           <form class="asset-search" id="research-search-form" role="search">
@@ -304,9 +304,26 @@
         </div>
       </article>
 
+      <article class="card">
+        <div class="card-head">
+          <div><h2>Multi-asset comparison</h2><p class="muted">Normalized price performance · pick up to six loaded assets</p></div>
+          <span class="pill" id="research-compare-pill">—</span>
+        </div>
+        <div class="checkbox-grid compare-picker" id="research-compare-picker"></div>
+        <div class="grid two compare-grid">
+          <div class="chart-wrap"><canvas id="research-compare-canvas" role="img" aria-label="Normalized performance comparison chart"></canvas></div>
+          <div class="table-wrap">
+            <table class="data-table" id="research-compare-table">
+              <thead><tr><th scope="col">Asset</th><th scope="col">1M</th><th scope="col">3M</th><th scope="col">1Y</th><th scope="col">Vol 21d</th><th scope="col">Beta</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+
       <div class="grid two">
         <article class="card">
-          <div class="card-head"><div><h2>Correlation matrix</h2><p class="muted">Daily returns · 1 year · cross-asset dependence</p></div></div>
+          <div class="card-head"><div><h2>Correlation matrix</h2><p class="muted">Daily returns · 1 year · selected comparison set</p></div></div>
           <div class="table-wrap heatmap-wrap">
             <table class="data-table heatmap" id="research-correlation">
               <thead></thead><tbody></tbody>
@@ -647,6 +664,10 @@
 
       <form class="card" id="risk-form">
         <div class="card-head"><div><h2>Allocation</h2><p class="muted">Weights are normalised automatically</p></div></div>
+        <fieldset class="fieldset">
+          <legend>Risk universe</legend>
+          <div class="checkbox-grid" id="risk-assets"></div>
+        </fieldset>
         <div class="table-wrap">
           <table class="data-table" id="risk-weights">
             <thead><tr><th scope="col">Asset</th><th scope="col">Weight (%)</th><th scope="col">Annual volatility</th><th scope="col">Risk contribution</th></tr></thead>

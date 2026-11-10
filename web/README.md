@@ -146,7 +146,11 @@ the default snapshot stays under the Workers Free subrequest budget.
 The Research terminal includes a price chart with SMA20/SMA50 and click-to-add
 annotations. Annotations are saved per symbol in `localStorage` and can be
 removed from the annotation list. The technical-indicator grid works in both the
-static and Workers builds.
+static and Workers builds. A multi-asset comparison panel normalizes up to six
+loaded assets to 100, shows 1M/3M/1Y returns, 21-day volatility and beta, and
+feeds the correlation matrix. The Screener, Optimize and Risk universes rebuild
+whenever a dynamic asset is hydrated, so searched tickers are available across
+those tools without a page reload.
 
 Automatic deployment is configured in
 [`../.github/workflows/cloudflare.yml`](../.github/workflows/cloudflare.yml).
@@ -163,13 +167,13 @@ asset set excludes tests, scripts, server code and package metadata.
 | Tab | What it does |
 | --- | --- |
 | Dashboard | Portfolio value/P&L, 26-asset market board, price chart with SMA 20/50, signal board, market ribbon |
-| Research | Price chart with SMA20/SMA50 and saved annotations, 23 explained technical indicators, multi-horizon scorecard, relative strength, drawdown, synthetic fundamentals, SEC facts and filings, macro, correlation heatmap, live or synthetic news sentiment, data-quality audit, JSON export |
+| Research | Price chart with SMA20/SMA50 and saved annotations, 23 explained technical indicators, multi-horizon scorecard, multi-asset normalized comparison, relative strength, drawdown, synthetic fundamentals, SEC facts and filings, macro, selected-asset correlation heatmap, live or synthetic news sentiment, data-quality audit, JSON export |
 | AI Analyst | Generative research briefs and grounded chat; 23-indicator technical/sentiment scan with summaries, SEC facts, key levels and 21-day probabilistic forecast with a forecast chart (Workers mode) |
 | Forecast | Drift + Holt + ridge-factor ensemble, Monte Carlo cones (50/80/95%), scenario matrix, terminal distribution, walk-forward diagnostics, feature attribution |
 | Backtest | 9 strategies, next-open execution, commission/slippage, equity/drawdown charts, trade log |
-| Optimize | Max Sharpe, min variance, risk parity, max diversification, weight cap, efficient frontier |
-| Risk | Correlated Monte Carlo with percentile bands, VaR/CVaR, risk decomposition, five stress scenarios |
-| Screener | Trend, momentum, RSI, liquidity filters and composite ranking |
+| Optimize | Max Sharpe, min variance, risk parity, max diversification, weight cap, efficient frontier, dynamic asset universe |
+| Risk | Correlated Monte Carlo with percentile bands, VaR/CVaR, risk decomposition, five stress scenarios, dynamic asset universe |
+| Screener | Trend, momentum, RSI, liquidity filters and composite ranking across the dynamic asset universe |
 | Portfolio | Average cost, unrealized/realized P&L, buy/sell ledger, FIFO/LIFO/HIFO/LOFO tax-lot comparison |
 | Alerts | Price, daily change, RSI and volume rules, cooldown, local trigger history |
 | Platform | Installation instructions and architecture notes |

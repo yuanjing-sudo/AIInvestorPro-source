@@ -5,10 +5,18 @@ import {
 } from './shared.js';
 import { screenUniverse } from '../core/screener.js';
 
-export function initScreener() {
+function renderSectorOptions() {
+  const select = $('#sc-sector');
+  if (!select) return;
+  const current = select.value;
   const sectors = [...new Set(UNIVERSE.map((asset) => asset.sector))].sort();
-  $('#sc-sector').innerHTML = '<option value="">All sectors</option>'
+  select.innerHTML = '<option value="">All sectors</option>'
     + sectors.map((sector) => `<option value="${escapeHtml(sector)}">${escapeHtml(sector)}</option>`).join('');
+  if (sectors.includes(current)) select.value = current;
+}
+
+export function initScreener() {
+  renderSectorOptions();
 
   $('#screener-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -23,6 +31,10 @@ export function initScreener() {
 
   renderScreener();
   document.addEventListener('ik:market-updated', renderScreener);
+  document.addEventListener('ik:assets-updated', () => {
+    renderSectorOptions();
+    renderScreener();
+  });
 }
 
 function applyFilters() {
