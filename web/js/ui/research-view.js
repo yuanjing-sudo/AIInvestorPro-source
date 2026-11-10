@@ -2,7 +2,7 @@
 // correlation, sentiment and data-quality coverage for one asset.
 
 import {
-  quotes, candleMap, fundamentals, news, quality, sources, macro, market, secBySymbol,
+  UNIVERSE, quotes, candleMap, fundamentals, news, quality, sources, macro, market, secBySymbol,
   assetsBySymbol, returnsBySymbol, indicators, state, $, escapeHtml, dateShort, sourceLabel,
   formatMoney, formatMoneyCompact, formatPercent, formatSignedPercent,
   formatNumber, formatCompact, signClass, makeChart, statCard, toast, fillSymbolSelect,
@@ -20,10 +20,89 @@ import { sma, indicatorDetails } from '../core/indicators.js';
 let relativeChart = null;
 let drawdownChart = null;
 let priceChart = null;
+let compareChart = null;
 let annotateMode = false;
+let lastResearchSymbol = null;
 
+const COMPARE_LIMIT = 6;
+const COMPARE_COLORS = ['#2ee6c5', '#7dd3fc', '#f6c85f', '#f0abfc', '#fda4af', '#a3e635'];
 const deepLoaded = new Set();
 const deepLoading = new Set();
+
+function dateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function availableCompareSymbols() {
+  return UNIVERSE
+    .map((asset) => asset.symbol)
+    .filter((symbol) => (candleMap[symbol]?.length ?? 0) >= 2);
+}
+
+function comparisonSymbols() {
+  const available = availableCompareSymbols();
+  const selected = (state.research.compare ?? []).filter((symbol) => available.includes(symbol));
+  if (!selected.length && available.includes(state.research.symbol)) selected.push(state.research.symbol);
+  if (selected.length < 2 && available.includes('SPY') && !selected.includes('SPY')) selected.push('SPY');
+  if (selected.length < 2) {
+    const fallback = available.find((symbol) => !selected.includes(symbol));
+    if (fallback) selected.push(fallback);
+  }
+  const unique = [...new Set(selected)].slice(0, COMPARE_LIMIT);
+  state.research.compare = unique;
+  return unique;
+}
+
+function addCompareSymbol(symbol) {
+  const current = (state.research.compare ?? []).filter((item) => item !== symbol);
+  state.research.compare = [symbol, ...current].slice(0, COMPARE_LIMIT);
+}
+
+function comparisonSeries(symbols) {
+  const rows = symbols.map((symbol) => {
+    const candles = (candleMap[symbol] ?? []).slice(-252);
+    return {
+      symbol,
+      byDate: new Map(candles.map((candle) => [dateKey(candle.date), candle.close])),
+    };
+  });
+  const dates = [...new Set(rows.flatMap((row) => [...row.byDate.keys()]))]
+    .filter(Boolean)
+    .sort()
+    .slice(-260);
+  const series = rows.map((row, index) => {
+    let base = null;
+    let last = null;
+    const values = dates.map((date) => {
+      const close = row.byDate.get(date);
+      if (Number.isFinite(close)) {
+        if (base === null) base = close;
+        last = (close / base) * 100;
+      }
+      return last;
+    });
+    return {
+      name: row.symbol,
+      values,
+      color: COMPARE_COLORS[index % COMPARE_COLORS.length],
+      width: index === 0 ? 2.4 : 1.6,
+    };
+  });
+  return { labels: dates.map((date) => dateShort(date)), series };
+}
+
+function renderComparePicker(symbols) {
+  const target = $('#research-compare-picker');
+  if (!target) return;
+  const available = UNIVERSE.filter((asset) => (candleMap[asset.symbol]?.length ?? 0) >= 2);
+  target.innerHTML = available.map((asset) => `<label class="checkbox-chip">
+    <input type="checkbox" value="${escapeHtml(asset.symbol)}" ${symbols.includes(asset.symbol) ? 'checked' : ''}>
+    <span><strong>${escapeHtml(asset.symbol)}</strong> <span class="muted">${escapeHtml(asset.sector)}</span></span>
+  </label>`).join('');
+  const pill = $('#research-compare-pill');
+  if (pill) pill.textContent = `${symbols.length} of ${COMPARE_LIMIT} assets`;
+}
 
 async function ensureDeep(symbol) {
   if (!live.enabled || deepLoaded.has(symbol) || deepLoading.has(symbol)) return;
@@ -171,8 +250,6 @@ function renderTechnical(symbol, quote) {
   }
 }
 
-const PEERS = ['SPY', 'QQQ', 'TLT', 'GLD', 'BTC-USD', 'AAPL', 'JPM', 'XOM'];
-
 export function initResearch() {
   const select = $('#research-symbol');
   if (!select) return;
@@ -181,6 +258,25 @@ export function initResearch() {
     state.research.symbol = select.value;
     renderResearch();
     ensureDeep(state.research.symbol);
+  });
+  $('#research-compare-picker')?.addEventListener('change', (event) => {
+    const input = event.target.closest('input[type="checkbox"]');
+    if (!input) return;
+    const checked = [...$('#research-compare-picker').querySelectorAll('input:checked')]
+      .map((item) => item.value);
+    if (checked.length > COMPARE_LIMIT) {
+      input.checked = false;
+      toast(`Compare up to ${COMPARE_LIMIT} assets at once`);
+      return;
+    }
+    if (checked.length < 2) {
+      input.checked = true;
+      toast('Keep at least two assets in the comparison');
+      return;
+    }
+    state.research.compare = checked;
+    renderCompare(state.research.symbol);
+    renderCorrelation(state.research.symbol);
   });
   $('#research-export')?.addEventListener('click', exportSnapshot);
   $('#research-annotate')?.addEventListener('click', () => {
@@ -212,6 +308,8 @@ export function initResearch() {
   });
   document.addEventListener('ik:assets-updated', () => {
     fillSymbolSelect(select, state.research.symbol);
+    renderCompare(state.research.symbol);
+    renderCorrelation(state.research.symbol);
     ensureDeep(state.research.symbol);
   });
   renderResearch();
@@ -265,6 +363,10 @@ export function setResearchSymbol(symbol) {
 export function renderResearch() {
   const symbol = assetsBySymbol[state.research.symbol] ? state.research.symbol : 'SPY';
   state.research.symbol = symbol;
+  if (symbol !== lastResearchSymbol) {
+    addCompareSymbol(symbol);
+    lastResearchSymbol = symbol;
+  }
   const asset = assetsBySymbol[symbol];
   const quote = quotes[symbol];
   const candles = candleMap[symbol];
@@ -342,6 +444,7 @@ export function renderResearch() {
   renderPriceAndTechnical(symbol, candles, quote, vol);
   renderFundamentals(symbol, basics, quote);
   renderMacro();
+  renderCompare(symbol);
   renderCorrelation(symbol);
   renderNews(symbol, items, sentiment);
   renderSec(symbol);
@@ -530,9 +633,47 @@ function renderMacro() {
   `).join('');
 }
 
+function renderCompare(symbol) {
+  const symbols = comparisonSymbols();
+  renderComparePicker(symbols);
+  const comparison = comparisonSeries(symbols);
+  if (!compareChart) {
+    compareChart = makeChart($('#research-compare-canvas'), {
+      height: 270,
+      yFormat: (value) => value.toFixed(0),
+      xFormat: (label) => label,
+      showLegend: true,
+    });
+  }
+  compareChart.setData({
+    labels: comparison.labels,
+    series: comparison.series,
+    yFormat: (value) => value.toFixed(0),
+  });
+
+  const tbody = $('#research-compare-table tbody');
+  if (!tbody) return;
+  tbody.innerHTML = symbols.map((key) => {
+    const asset = assetsBySymbol[key];
+    const candles = candleMap[key] ?? [];
+    const perf = Object.fromEntries(performanceWindows(candles).map((row) => [row.key, row.value]));
+    const assetReturns = (returnsBySymbol[key] ?? []).slice(-252);
+    const spyReturns = (returnsBySymbol.SPY ?? []).slice(-252);
+    const assetBeta = key === 'SPY' ? 1 : beta(assetReturns, spyReturns);
+    return `<tr class="${key === symbol ? 'is-selected' : ''}">
+      <td><span class="symbol">${escapeHtml(key)}</span><span class="sub">${escapeHtml(asset?.name ?? '')}</span></td>
+      <td class="num ${signClass(perf['1M'])}">${formatSignedPercent(perf['1M'] ?? 0, 1)}</td>
+      <td class="num ${signClass(perf['3M'])}">${formatSignedPercent(perf['3M'] ?? 0, 1)}</td>
+      <td class="num ${signClass(perf['1Y'])}">${formatSignedPercent(perf['1Y'] ?? 0, 1)}</td>
+      <td class="num">${formatPercent(historicalVolatility(candles, 21), 1)}</td>
+      <td class="num">${formatNumber(assetBeta, 2)}</td>
+    </tr>`;
+  }).join('');
+}
+
 function renderCorrelation(symbol) {
-  const symbols = [symbol, ...PEERS.filter((peer) => peer !== symbol)].slice(0, 7);
-  const series = symbols.map((key) => returnsBySymbol[key].slice(-252));
+  const symbols = comparisonSymbols();
+  const series = symbols.map((key) => (returnsBySymbol[key] ?? []).slice(-252));
   const matrix = correlationMatrix(
     Object.fromEntries(symbols.map((key, index) => [key, series[index]])),
     symbols,

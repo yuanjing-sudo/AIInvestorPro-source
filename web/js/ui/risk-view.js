@@ -3,13 +3,43 @@
 import {
   UNIVERSE, assetsBySymbol, returnsBySymbol, state, $, escapeHtml,
   formatMoneyCompact, formatPercent, formatMoney, makeChart, statCard,
-  aggregatePortfolio, signClass,
+  aggregatePortfolio, signClass, toast,
 } from './shared.js';
 import { monteCarlo, stressTests, portfolioRisk } from '../core/risk.js';
 
 let mcChart = null;
 
+function renderRiskAssets() {
+  const target = $('#risk-assets');
+  if (!target) return;
+  const available = new Set(UNIVERSE.map((asset) => asset.symbol));
+  state.risk.symbols = state.risk.symbols.filter((symbol) => available.has(symbol));
+  target.innerHTML = UNIVERSE.map((asset) => `<label class="checkbox-chip">
+    <input type="checkbox" value="${asset.symbol}" ${state.risk.symbols.includes(asset.symbol) ? 'checked' : ''}>
+    <span><strong>${asset.symbol}</strong> <span class="muted">${escapeHtml(asset.sector)}</span></span>
+  </label>`).join('');
+}
+
 export function initRisk() {
+  renderRiskAssets();
+  $('#risk-assets')?.addEventListener('change', () => {
+    const checked = [...$('#risk-assets').querySelectorAll('input:checked')]
+      .map((input) => input.value);
+    if (checked.length < 2) {
+      toast('Keep at least two assets in the risk portfolio');
+      renderRiskAssets();
+      return;
+    }
+    for (const symbol of checked) {
+      if (!(symbol in state.risk.weights)) state.risk.weights[symbol] = 0;
+    }
+    state.risk.symbols = checked;
+    state.risk.result = null;
+    state.risk.stress = null;
+    const results = $('#risk-results');
+    if (results) results.hidden = true;
+    renderRiskWeights();
+  });
   $('#risk-form').addEventListener('submit', (event) => {
     event.preventDefault();
     runRisk();
@@ -34,6 +64,7 @@ export function initRisk() {
     if (results) results.hidden = true;
     renderRiskWeights();
   });
+  document.addEventListener('ik:assets-updated', renderRiskAssets);
 }
 
 export function setAllocation(symbols, weightsPercent) {
@@ -46,6 +77,7 @@ export function setAllocation(symbols, weightsPercent) {
   state.risk.stress = null;
   const results = $('#risk-results');
   if (results) results.hidden = true;
+  renderRiskAssets();
   renderRiskWeights();
 }
 
@@ -59,6 +91,7 @@ function normalizedWeights() {
 function riskSnapshot() {
   const symbols = state.risk.symbols;
   const weights = normalizedWeights();
+  if (!symbols.length) return { symbols, weights, risk: { contributions: [] } };
   const risk = portfolioRisk(symbols, weights, returnsBySymbol);
   return { symbols, weights, risk };
 }

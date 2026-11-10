@@ -84,7 +84,10 @@ assert(document.querySelector('#asset-chart').width > 0, 'asset chart sized');
 document.querySelector('[data-tab="research"]').click();
 await wait(80);
 assert(document.querySelectorAll('#research-stats .stat').length === 8, 'research stats');
-assert(document.querySelectorAll('#research-correlation tbody tr').length >= 5, 'correlation matrix');
+assert(document.querySelectorAll('#research-compare-picker input').length === 26, 'compare picker lists loaded assets');
+assert(document.querySelectorAll('#research-compare-table tbody tr').length >= 2, 'multi-asset comparison rows');
+assert(document.querySelector('#research-compare-canvas').width > 0, 'comparison chart sized');
+assert(document.querySelectorAll('#research-correlation tbody tr').length >= 2, 'correlation matrix');
 assert(document.querySelectorAll('#research-news .news-item').length >= 4, 'research news');
 assert(document.querySelectorAll('#research-fundamentals tbody tr').length >= 8, 'fundamental rows');
 assert(document.querySelectorAll('#research-macro .macro-cell').length >= 8, 'macro cells');
@@ -144,6 +147,7 @@ assert(document.querySelectorAll('#bt-trades tbody tr').length > 0, 'backtest tr
 
 // Optimize
 document.querySelector('[data-tab="optimize"]').click();
+assert(document.querySelectorAll('#optimize-assets input').length === 26, 'optimizer lists loaded assets');
 submit('#optimize-form');
 await wait(180);
 assert(document.querySelector('#optimize-results').hidden === false, 'optimize results visible');
@@ -153,6 +157,7 @@ assert(document.querySelectorAll('#opt-bars .bar-row').length >= 2, 'optimizer b
 
 // Risk
 document.querySelector('[data-tab="risk"]').click();
+assert(document.querySelectorAll('#risk-assets input').length === 26, 'risk universe lists loaded assets');
 submit('#risk-form');
 await wait(300);
 assert(document.querySelector('#risk-results').hidden === false, 'risk results visible');
@@ -212,8 +217,44 @@ assert(document.querySelector('#tab-platform').hidden === false, 'platform tab o
 document.querySelector('[data-tab="dashboard"]').click();
 assert(document.querySelector('#tab-dashboard').hidden === false, 'dashboard tab opens');
 
+// Dynamic asset hydration refreshes every symbol picker and research comparison.
+const { hydrateSymbol } = await import(pathToFileURL(`${ROOT}/js/ui/shared.js`).href);
+const start = new Date('2025-01-01T00:00:00Z');
+const candles = Array.from({ length: 260 }, (_, index) => {
+  const close = 500 + index * 0.5 + Math.sin(index / 7) * 5;
+  return {
+    date: new Date(start.getTime() + index * 86400000),
+    open: close - 1,
+    high: close + 2,
+    low: close - 2,
+    close,
+    volume: 1_000_000 + index * 1000,
+  };
+});
+hydrateSymbol({
+  asset: { symbol: 'COST', name: 'Costco Wholesale', sector: 'Membership Retail', kind: 'equity' },
+  candles,
+  quote: { symbol: 'COST', price: candles.at(-1).close, changePercent: 0.5, name: 'Costco Wholesale' },
+  source: 'yahoo',
+  provider: 'Yahoo Finance',
+});
+await wait(80);
+assert([...document.querySelectorAll('#research-symbol option')].some((option) => option.value === 'COST'), 'dynamic research selector');
+assert([...document.querySelectorAll('#ai-symbol option')].some((option) => option.value === 'COST'), 'dynamic AI selector');
+assert(document.querySelectorAll('#research-compare-picker input').length === 27, 'dynamic comparison picker');
+assert(document.querySelectorAll('#optimize-assets input').length === 27, 'dynamic optimizer picker');
+assert(document.querySelectorAll('#risk-assets input').length === 27, 'dynamic risk picker');
+assert([...document.querySelectorAll('#sc-sector option')].some((option) => option.value === 'Membership Retail'), 'dynamic screener sector');
+const costPicker = [...document.querySelectorAll('#research-compare-picker input')]
+  .find((input) => input.value === 'COST');
+costPicker.checked = true;
+costPicker.dispatchEvent(new window.Event('change', { bubbles: true }));
+await wait(40);
+assert([...document.querySelectorAll('#research-compare-table tbody tr')]
+  .some((row) => row.textContent.includes('COST')), 'dynamic asset joins comparison');
+
 if (errors.length) {
   throw new Error(`Browser errors: ${errors.map((error) => error?.stack ?? error).join('\n')}`);
 }
 
-console.log('UI smoke passed: dashboard, research, forecast, AI analyst, backtest, optimize, risk, screener, portfolio, tax lots, alerts, command palette, navigation, annotations and technical scan.');
+console.log('UI smoke passed: dashboard, research, multi-asset comparison, forecast, AI analyst, backtest, optimize, risk, screener, dynamic asset pickers, portfolio, tax lots, alerts, command palette, navigation, annotations and technical scan.');

@@ -473,6 +473,8 @@ select { cursor: pointer; }
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
   background: color-mix(in srgb, var(--accent) 7%, var(--panel-2));
 }
+.compare-picker { max-height: 150px; overflow-y: auto; margin-bottom: 13px; padding-right: 3px; }
+.compare-grid { align-items: start; }
 
 /* ------------------------------------------------------------------ */
 /* Charts                                                              */

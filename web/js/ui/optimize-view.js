@@ -9,12 +9,20 @@ import { setAllocation } from './risk-view.js';
 
 let frontierChart = null;
 
-export function initOptimize() {
+function renderOptimizeAssets() {
   const grid = $('#optimize-assets');
+  if (!grid) return;
+  const available = new Set(UNIVERSE.map((asset) => asset.symbol));
+  state.optimize.selected = state.optimize.selected.filter((symbol) => available.has(symbol));
   grid.innerHTML = UNIVERSE.map((asset) => `<label class="checkbox-chip">
     <input type="checkbox" value="${asset.symbol}" ${state.optimize.selected.includes(asset.symbol) ? 'checked' : ''}>
     <span><strong>${asset.symbol}</strong> <span class="muted">${escapeHtml(asset.sector)}</span></span>
   </label>`).join('');
+}
+
+export function initOptimize() {
+  const grid = $('#optimize-assets');
+  renderOptimizeAssets();
 
   grid.addEventListener('change', () => {
     state.optimize.selected = [...grid.querySelectorAll('input:checked')].map((input) => input.value);
@@ -36,6 +44,7 @@ export function initOptimize() {
   });
 
   if (state.optimize.result) renderOptimizeResult();
+  document.addEventListener('ik:assets-updated', renderOptimizeAssets);
 }
 
 function runOptimizer() {

@@ -227,7 +227,7 @@ export const state = {
     history: 180,
     result: null,
   },
-  research: { symbol: 'SPY' },
+  research: { symbol: 'SPY', compare: ['SPY', 'QQQ', 'BTC-USD', 'GLD'] },
   screener: {
     filters: {
       sectors: [], minPrice: 0, maxPrice: Infinity, minAvgVolume: 0,
